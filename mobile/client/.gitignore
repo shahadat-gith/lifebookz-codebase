@@ -1,5 +1,7 @@
 node_modules/
 .expo/
+.claude/
+.vscode/
 dist/
 web-build/
 *.orig.*

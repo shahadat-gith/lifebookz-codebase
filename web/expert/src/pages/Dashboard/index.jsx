@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
 import { useAuth } from "../../context/AuthContext";
+import useRealtimeConsultations from "../../hooks/useRealtimeConsultations";
 import { CONSULT_CATEGORIES } from "../../config";
 import * as consultApi from "../../api/consultation";
 import { formatDate } from "../../utils/helpers";
@@ -59,11 +60,24 @@ export default function Dashboard() {
   const [busyId, setBusyId] = useState(null);
   const [togglingAvailability, setTogglingAvailability] = useState(false);
   const [filter, setFilter] = useState("all");
+  const [newRequestPulse, setNewRequestPulse] = useState(false);
+
+  // --- Limited fetching: latest PAGE_SIZE records, "Show more" appends 10
+  const PAGE_SIZE = 10;
+  const [shownCount, setShownCount] = useState(PAGE_SIZE);
+  const [page, setPage] = useState(1);
+  const [lastPageCount, setLastPageCount] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [allFetched, setAllFetched] = useState(false);
 
   const loadConsultations = useCallback(async () => {
     try {
-      const data = await consultApi.listMine();
+      const data = await consultApi.listMine({ limit: PAGE_SIZE, page: 1 });
       setConsultations(data || []);
+      setLastPageCount((data || []).length);
+      setShownCount(PAGE_SIZE);
+      setPage(1);
+      setAllFetched(false);
     } catch {
       toast.error("Could not load your consultations.");
     } finally {
@@ -79,6 +93,82 @@ export default function Dashboard() {
     if (!expert) return;
     loadConsultations();
   }, [expert, loadConsultations]);
+
+  // --- Realtime (AWS API Gateway WebSocket) -------------------------------
+  // One shared socket per dashboard session. Any consultation event for this
+  // expert refetches the list in place — no refresh needed.
+  const expertId = expert?._id || expert?.id;
+  const loadingRef = useRef(false);
+
+  const refreshFromEvent = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    try {
+      await loadConsultations();
+    } finally {
+      loadingRef.current = false;
+    }
+  }, [loadConsultations]);
+
+  const { status: wsStatus } = useRealtimeConsultations((event) => {
+    // Tolerant matching: whatever frame shape the backend pushes, treat any
+    // non-ping message as "something changed" and refetch.
+    if (!event || event.event === "ping") return;
+    if (
+      event.event === "consultation.new" ||
+      event.type === "consultation.new"
+    ) {
+      toast.success("New session request received");
+      setNewRequestPulse(true);
+      setTimeout(() => setNewRequestPulse(false), 6000);
+    }
+    refreshFromEvent();
+  }, expertId);
+
+  // Safety net: refetch every 60s while the tab is visible, so the list
+  // stays correct even if the socket drops or the backend skips a frame.
+  useEffect(() => {
+    if (!expertId) return undefined;
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") refreshFromEvent();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [expertId, refreshFromEvent]);
+
+  /**
+   * "Show more" — reveal 10 more of what we already fetched; when that runs
+   * out and the last page came back full, fetch the next page and append.
+   * Deduped by id, so a page-param-less backend can't create duplicates.
+   */
+  const loadMore = useCallback(async () => {
+    if (shownCount < consultations.length) {
+      setShownCount((n) => n + PAGE_SIZE);
+      return;
+    }
+    if (allFetched || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const next = await consultApi.listMine({
+        limit: PAGE_SIZE,
+        page: page + 1,
+      });
+      const known = new Set(consultations.map((c) => c._id || c.id));
+      const fresh = (next || []).filter((c) => !known.has(c._id || c.id));
+      setLastPageCount((next || []).length);
+      setPage((p) => p + 1);
+      if (fresh.length > 0) {
+        setConsultations((prev) => [...prev, ...fresh]);
+        setShownCount((n) => n + fresh.length);
+      } else {
+        setAllFetched(true);
+      }
+      if ((next || []).length < PAGE_SIZE) setAllFetched(true);
+    } catch {
+      toast.error("Could not load more sessions.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [consultations, shownCount, allFetched, loadingMore, page]);
 
   const stats = useMemo(() => {
     const count = (...statuses) =>
@@ -103,10 +193,15 @@ export default function Dashboard() {
 
   const visible = useMemo(() => {
     const active = FILTERS.find((f) => f.id === filter);
-    return active?.statuses
+    const filtered = active?.statuses
       ? consultations.filter((c) => active.statuses.includes(c.status))
       : consultations;
-  }, [consultations, filter]);
+    return filtered.slice(0, shownCount);
+  }, [consultations, filter, shownCount]);
+
+  const hasMore =
+    shownCount < consultations.length ||
+    (!allFetched && lastPageCount >= PAGE_SIZE);
 
   const isApproved = expert?.verification?.status === "approved";
   const isRejected = expert?.verification?.status === "rejected";
@@ -179,122 +274,72 @@ export default function Dashboard() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 px-4 py-8 sm:py-10">
-      {/* Profile header */}
-      <Card padding="none" className="overflow-hidden">
-        <div className="flex flex-col gap-5 p-5 sm:p-6 md:flex-row md:items-center md:justify-between">
-          <div className="flex min-w-0 items-center gap-4">
-            {expert.avatar?.url ? (
-              <img
-                src={expert.avatar.url}
-                alt={expert.fullName}
-                className="size-16 shrink-0 rounded-full object-cover ring-1 ring-border"
-              />
-            ) : (
-              <div className="flex size-16 shrink-0 items-center justify-center rounded-full bg-primary font-display text-lg font-semibold text-primary-foreground">
-                {initials(expert.fullName)}
-              </div>
-            )}
-
-            <div className="min-w-0">
-              <h1 className="truncate font-display text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-                {expert.fullName}
-              </h1>
-              {expert.expertise && (
-                <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                  {expert.expertise}
-                </p>
-              )}
-              <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                <Badge
-                  variant={isApproved ? "success" : isRejected ? "danger" : "warning"}
-                >
-                  {isApproved
-                    ? "Verified expert"
-                    : isRejected
-                      ? "Application rejected"
-                      : "Pending approval"}
-                </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {expert.ratingCount
-                    ? `${expert.rating.toFixed(1)} ★ from ${expert.ratingCount} rating${expert.ratingCount === 1 ? "" : "s"}`
-                    : "No ratings yet"}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            {/* Availability switch */}
-            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/50 px-3 py-1.5 sm:justify-start">
-              <div className="leading-tight">
-                <p className="text-[13px] font-medium text-foreground">
-                  {isAvailable ? "Accepting requests" : "Not accepting requests"}
-                </p>
-                <p className="text-[11px] text-muted-foreground">
-                  {isAvailable ? "Visible in search" : "Hidden from search"}
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={isAvailable}
-                aria-label="Toggle availability"
-                disabled={togglingAvailability}
-                onClick={toggleAvailability}
-                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 ${
-                  isAvailable ? "bg-success" : "bg-input"
-                }`}
-              >
-                <span
-                  className={`inline-block size-4 rounded-full bg-white shadow-xs transition-transform duration-150 ${
-                    isAvailable ? "translate-x-[18px]" : "translate-x-0.5"
-                  }`}
-                />
-              </button>
-            </div>
-
-            <Link to="/profile/edit" className="sm:shrink-0">
-              <Button
-                variant="outline"
-                icon={<Icons.edit />}
-                fullWidth
-                className="sm:w-auto"
-              >
-                Edit profile
-              </Button>
-            </Link>
-          </div>
+      {/* Header: title + single Availability control */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="font-display text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+            Session requests
+          </h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Live view — new requests appear here automatically.
+          </p>
         </div>
 
-        {/* Verification notice, attached to the header */}
-        {!isApproved && (
-          <div
-            className={`flex items-start gap-3 border-t px-5 py-3 text-sm sm:px-6 ${
-              isRejected
-                ? "border-destructive/20 bg-destructive/5 text-destructive"
-                : "border-warning/20 bg-warning/5 text-warning"
+        {/* Availability — the one master control for new requests */}
+        <button
+          type="button"
+          aria-pressed={isAvailable}
+          aria-label="Toggle availability"
+          disabled={togglingAvailability}
+          onClick={toggleAvailability}
+          className={`inline-flex shrink-0 items-center gap-2.5 rounded-full border px-4 py-2 text-sm font-semibold shadow-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 ${
+            isAvailable
+              ? "border-success/30 bg-success/10 text-success hover:bg-success/15"
+              : "border-border bg-muted text-muted-foreground hover:bg-muted/70"
+          }`}
+        >
+          <span
+            className={`size-2 rounded-full ${
+              isAvailable ? "bg-success" : "bg-zinc-400"
             }`}
-          >
-            <Icons.infoCircle className="mt-0.5 size-4 shrink-0" />
-            <div className="text-[13px] leading-relaxed">
-              {isRejected ? (
-                <>
-                  <span className="font-semibold">Your application was rejected.</span>
-                  {expert.verification?.rejectionReason && (
-                    <span> Reason: {expert.verification.rejectionReason}</span>
-                  )}
-                </>
-              ) : (
-                <>
-                  <span className="font-semibold">Your application is under review.</span>{" "}
-                  Once approved, your profile is matched with people who need your
-                  expertise and requests will appear here.
-                </>
-              )}
-            </div>
+            aria-hidden="true"
+          />
+          {togglingAvailability
+            ? "Updating…"
+            : isAvailable
+              ? "Available — accepting new sessions"
+              : "Unavailable — tap to accept sessions"}
+        </button>
+      </div>
+
+      {/* Verification notice — shown until approved */}
+      {!isApproved && (
+        <div
+          className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${
+            isRejected
+              ? "border-destructive/20 bg-destructive/5 text-destructive"
+              : "border-warning/20 bg-warning/5 text-warning"
+          }`}
+        >
+          <Icons.infoCircle className="mt-0.5 size-4 shrink-0" />
+          <div className="text-[13px] leading-relaxed">
+            {isRejected ? (
+              <>
+                <span className="font-semibold">Your application was rejected.</span>
+                {expert.verification?.rejectionReason && (
+                  <span> Reason: {expert.verification.rejectionReason}</span>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="font-semibold">Your application is under review.</span>{" "}
+                Once approved, your profile is matched with people who need your
+                expertise and requests will appear here.
+              </>
+            )}
           </div>
-        )}
-      </Card>
+        </div>
+      )}
 
       {/* Stats strip: one panel, four cells */}
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border shadow-xs lg:grid-cols-4">
@@ -312,6 +357,30 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      {/* Realtime connection state — the socket feeds this page its updates */}
+      <p className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+        <span
+          className={`size-1.5 rounded-full ${
+            wsStatus === "open"
+              ? "bg-emerald-500"
+              : wsStatus === "connecting" || wsStatus === "idle"
+                ? "bg-amber-400 animate-pulse"
+                : "bg-zinc-400"
+          }`}
+          aria-hidden="true"
+        />
+        {wsStatus === "open"
+          ? "Live — Accepting requests"
+          : wsStatus === "connecting" || wsStatus === "idle"
+            ? "Connecting for live updates…"
+            : "Live updates reconnecting — list may lag a moment"}
+        {newRequestPulse && (
+          <span className="ml-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+            new request just came in
+          </span>
+        )}
+      </p>
 
       {/* Consultations */}
       <Card padding="none" className="overflow-hidden">
@@ -426,10 +495,17 @@ export default function Dashboard() {
                               {consultation.userEmail}
                             </span>
                           )}
-                          {typeof consultation.amount === "number" && (
+                          {typeof consultation.amount === "number" &&
+                            consultation.amount > 0 && (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 font-medium text-foreground">
+                                <Icons.money className="size-3.5" />
+                                ₹{(consultation.amount / 100).toFixed(0)} session fee
+                              </span>
+                            )}
+                          {consultation.status === "CONFIRMED" && (
                             <span className="inline-flex items-center gap-1.5">
-                              <Icons.money className="size-3.5" />
-                              ₹{(consultation.amount / 100).toFixed(0)}, paid when the client joins
+                              <Icons.clock className="size-3.5" />
+                              Client pays before joining
                             </span>
                           )}
                           {consultation.createdAt && (
@@ -510,6 +586,20 @@ export default function Dashboard() {
               );
             })}
           </ul>
+        )}
+
+        {hasMore && visible.length > 0 && (
+          <div className="flex justify-center border-t border-border px-5 py-4 sm:px-6">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-5 py-2 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
+            >
+              {loadingMore ? "Loading…" : "Show more"}
+              {!loadingMore && <Icons.chevronDown className="size-4" />}
+            </button>
+          </div>
         )}
       </Card>
     </div>

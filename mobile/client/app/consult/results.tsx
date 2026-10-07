@@ -46,16 +46,24 @@ export default function ConsultResultsScreen() {
 
     setBookingId(expertId);
     try {
-      await consultApi.createRequest({
+      const consultation = await consultApi.createRequest({
         expertId,
         problem: problem as string,
         category: category || undefined,
         notes: (details || "").trim(),
       });
-      toast.success(
-        `Request sent to ${expert.fullName}. You'll get an email as soon as it's confirmed.`,
-      );
-      router.push("/bookings");
+      const consultationId = (consultation._id || consultation.id) as string;
+      if (!consultationId) throw new Error("No consultation id returned");
+      toast.success("Request sent — we'll tell you the moment it's confirmed.");
+      // Off to the live waiting page: WS confirmation flips it to Pay.
+      router.replace({
+        pathname: "/consult/waiting",
+        params: {
+          consultationId,
+          expertName: expert.fullName || "Your expert",
+          expertAvatar: mediaUrl(expert.avatar),
+        },
+      });
     } catch (err) {
       toast.error(apiErrorMessage(err, "Could not send your request. Please try again."));
     } finally {

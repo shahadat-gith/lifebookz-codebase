@@ -9,9 +9,17 @@ import api from '../config/api';
 // Consultations
 // ---------------------------------------------------------------------------
 
-export async function listMine() {
-  const res = await api.get('/consultations/expert');
-  return res.data.data;
+/**
+ * List the expert's consultations. Requests `limit`/`page` so we don't pull
+ * the whole history every dashboard load; the backend may cap or ignore
+ * these — the caller dedupes by id either way.
+ */
+export async function listMine({ limit = 10, page = 1 } = {}) {
+  const res = await api.get('/consultations/expert', {
+    params: { limit, page },
+  });
+  const data = res.data.data;
+  return Array.isArray(data) ? data : data?.consultations || data?.items || [];
 }
 
 export async function getConsultation(id) {

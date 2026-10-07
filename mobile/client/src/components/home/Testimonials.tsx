@@ -129,9 +129,7 @@ export function TestimonialsRail() {
         <Text style={[styles.title, { color: theme.text }]}>
           What Our Community Says
         </Text>
-        <Text style={[styles.subtitle, { color: theme.textMuted }]}>
-          Real voices from readers and writers who love Lifebookz.
-        </Text>
+       
       </View>
 
       {testimonials.isLoading ? (

@@ -2,7 +2,14 @@
  * "What is Lifebookz?" — the definition block plus the two audience panels
  * (For Authors / For Readers), mirroring the web home page.
  */
-import { Linking, Pressable, StyleSheet, Text, View, useColorScheme } from "react-native";
+import {
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useColorScheme,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
@@ -73,17 +80,16 @@ function AudiencePanel({
       ]}
     >
       {/* Panel header */}
-      <View
-        style={[
-          styles.panelHeader,
-          { borderBottomColor: theme.border },
-        ]}
-      >
-        <View style={[styles.panelIcon, { backgroundColor: `${theme.accent}1f` }]}>
+      <View style={[styles.panelHeader, { borderBottomColor: theme.border }]}>
+        <View
+          style={[styles.panelIcon, { backgroundColor: `${theme.accent}1f` }]}
+        >
           <Ionicons name={icon} size={18} color={theme.accent} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.panelTitle, { color: theme.text }]}>{label}</Text>
+          <Text style={[styles.panelTitle, { color: theme.text }]}>
+            {label}
+          </Text>
           <Text style={[styles.panelSubtitle, { color: theme.textMuted }]}>
             {subtitle}
           </Text>
@@ -96,13 +102,19 @@ function AudiencePanel({
           key={item.title}
           style={[
             styles.itemRow,
-            index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border },
+            index > 0 && {
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: theme.border,
+            },
           ]}
         >
           <View
             style={[
               styles.itemBadge,
-              { borderColor: `${theme.accent}44`, backgroundColor: `${theme.accent}0f` },
+              {
+                borderColor: `${theme.accent}44`,
+                backgroundColor: `${theme.accent}0f`,
+              },
             ]}
           >
             <Text style={[styles.itemBadgeText, { color: theme.accent }]}>
@@ -110,7 +122,9 @@ function AudiencePanel({
             </Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.itemTitle, { color: theme.text }]}>{item.title}</Text>
+            <Text style={[styles.itemTitle, { color: theme.text }]}>
+              {item.title}
+            </Text>
             <Text style={[styles.itemDescription, { color: theme.textMuted }]}>
               {item.description}
             </Text>
@@ -126,7 +140,9 @@ function AudiencePanel({
           { borderTopColor: theme.border, opacity: pressed ? 0.7 : 1 },
         ]}
       >
-        <Text style={[styles.panelCtaText, { color: theme.primary }]}>{cta}</Text>
+        <Text style={[styles.panelCtaText, { color: theme.primary }]}>
+          {cta}
+        </Text>
         <Ionicons name="arrow-forward" size={14} color={theme.primary} />
       </Pressable>
     </View>
@@ -145,15 +161,14 @@ export function WhatIsLifebookz() {
         <View
           style={[
             styles.ideaBadge,
-            { borderColor: `${theme.accent}26`, backgroundColor: `${theme.accent}14` },
+            {
+              borderColor: `${theme.accent}26`,
+              backgroundColor: `${theme.accent}14`,
+            },
           ]}
-        >
-          <Ionicons name="sparkles" size={12} color={theme.accent} />
-          <Text style={[styles.ideaBadgeText, { color: theme.accent }]}>THE IDEA</Text>
-        </View>
+        ></View>
         <Text style={[styles.definitionTitle, { color: theme.text }]}>
-          What is{" "}
-          <Text style={{ color: theme.primary }}>Lifebookz</Text>?
+          What is <Text style={{ color: theme.primary }}>Lifebookz</Text>?
         </Text>
         <Text style={[styles.definitionBody, { color: theme.textMuted }]}>
           A digital home for life stories. Write your own memories and leave a
@@ -166,10 +181,7 @@ export function WhatIsLifebookz() {
             { borderColor: theme.border, backgroundColor: theme.surface },
           ]}
         >
-          <View style={[styles.chipDot, { backgroundColor: theme.accent }]} />
-          <Text style={[styles.writeReadChipText, { color: theme.text }]}>
-            WRITE YOURS · READ THEIRS
-          </Text>
+
         </View>
       </View>
 
@@ -180,7 +192,7 @@ export function WhatIsLifebookz() {
           label="For Authors"
           subtitle="Write · Preserve · Pass on"
           items={AUTHOR_POINTS}
-          cta="Start your Lifebook"
+          cta="Join as Author"
           onPress={() => Linking.openURL(AUTHOR_PORTAL).catch(() => {})}
         />
         <AudiencePanel
@@ -244,7 +256,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   panelTitle: { fontSize: 16, fontWeight: "800" },
-  panelSubtitle: { fontSize: 10, fontWeight: "700", letterSpacing: 1.4, marginTop: 1 },
+  panelSubtitle: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.4,
+    marginTop: 1,
+  },
   itemRow: {
     flexDirection: "row",
     gap: Spacing.md,

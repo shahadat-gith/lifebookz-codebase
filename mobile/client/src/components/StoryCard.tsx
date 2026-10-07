@@ -44,13 +44,7 @@ export function StoryCard({ story }: { story: Story }) {
               <Text style={[styles.tagText, { color: theme.accent }]}>★ Featured</Text>
             </View>
           ) : null}
-          {story.author?.profession || story.authorProfession ? (
-            <View style={[styles.tag, { backgroundColor: `${theme.primary}14` }]}>
-              <Text style={[styles.tagText, { color: theme.primary }]} numberOfLines={1}>
-                {story.author?.profession || story.authorProfession}
-              </Text>
-            </View>
-          ) : null}
+    
         </View>
 
         <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>

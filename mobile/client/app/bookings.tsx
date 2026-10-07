@@ -119,7 +119,7 @@ export default function BookingsScreen() {
         <BackBar onPress={() => router.back()} />
         <ScreenHeader
           title="My bookings"
-          subtitle="Track your consultation requests — pay at the room door, then join."
+          subtitle="Your all bookings appear here."
         />
       </View>
 
