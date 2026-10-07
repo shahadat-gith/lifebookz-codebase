@@ -1,0 +1,158 @@
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
+
+import { useAuth } from "../../context/AuthContext";
+import { Icons } from "../../icons";
+import Avatar from "../ui/Avatar";
+
+export function Navbar() {
+  const { author, isAuthenticated, logout } = useAuth();
+  const loc = useLocation();
+  const navigate = useNavigate();
+  const [profileOpen, setProfileOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  const isA = (p) => loc.pathname === p;
+
+  // No "Write" entry here on purpose — starting a story is already offered on
+  // Home, My Stories and Profile, plus the bottom bar's + action.
+  const links = [
+    { to: "/", label: "Home", icon: <Icons.home className="h-4 w-4" /> },
+    { to: "/feed", label: "Feed", icon: <Icons.document className="h-4 w-4" /> },
+    {
+      to: "/my-stories",
+      label: "My Stories",
+      icon: <Icons.book className="h-4 w-4" />,
+    },
+  ];
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setProfileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/85 backdrop-blur-md">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex h-16 items-center justify-between md:h-[4.5rem]">
+          {/* Brand — logo plus the two-tone wordmark from the theme token */}
+          <Link
+            to={isAuthenticated ? "/" : "/login"}
+            className="group flex shrink-0 items-center gap-2.5"
+            aria-label="LifeBookz — Home"
+          >
+            <img
+              src="/logo.png"
+              alt="LifeBookz"
+              className="h-9 w-auto shrink-0 transition-transform duration-200 group-hover:scale-[1.03] sm:h-10"
+            />
+            <span className="font-display text-xl font-bold tracking-tight text-brand-wordmark">
+              Life<span className="text-accent">bookz</span>
+            </span>
+          </Link>
+
+          {/* Desktop: navigation lives in the profile dropdown; mobile:
+              bottom tabs carry the nav. Nothing inline here. */}
+
+          {/* Right cluster: profile */}
+          <div className="flex items-center gap-2">
+            {/* Desktop User Profile / Auth Area */}
+            {isAuthenticated && author ? (
+              <div className="relative hidden md:block" ref={dropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen(!profileOpen)}
+                  className="flex items-center gap-2.5 rounded-xl border border-transparent px-2.5 py-1.5 hover:border-border/60 hover:bg-card/80 transition-all duration-200 focus:outline-none"
+                >
+                  <Avatar
+                    src={author.avatar?.url}
+                    name={author.fullName}
+                    size="sm"
+                    className="ring-2 ring-border/80"
+                  />
+                  <Icons.chevronDown
+                    className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${
+                      profileOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {/* Profile Dropdown — only items NOT in the bottom tabs */}
+                <AnimatePresence>
+                  {profileOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 top-full mt-2 w-60 rounded-xl border border-border/80 bg-popover p-1.5 shadow-md shadow-black/5"
+                    >
+                      <div className="border-b border-border/50 px-3 py-2.5 mb-1">
+                        <p className="text-sm font-semibold text-foreground">
+                          {author.fullName}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {author.email}
+                        </p>
+                      </div>
+
+                      {/* Navigation items (moved out of the navbar) */}
+                      <div className="pb-1 mb-1 border-b border-border/50">
+                        {links.map((l) => (
+                          <Link
+                            key={l.to}
+                            to={l.to}
+                            onClick={() => setProfileOpen(false)}
+                            className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                              isA(l.to)
+                                ? "bg-primary/5 text-primary"
+                                : "text-foreground hover:bg-muted"
+                            }`}
+                          >
+                            <span className="text-muted-foreground">{l.icon}</span>
+                            {l.label}
+                          </Link>
+                        ))}
+                      </div>
+
+                      <Link
+                        to="/profile"
+                        onClick={() => setProfileOpen(false)}
+                        className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                      >
+                        <Icons.user className="h-4 w-4 text-muted-foreground" />
+                        My Profile
+                      </Link>
+
+                      <hr className="my-1 border-border/50" />
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          logout();
+                          setProfileOpen(false);
+                          navigate("/");
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
+                      >
+                        <Icons.logout className="h-4 w-4" /> Sign Out
+                      </button>
+                    </motion.div>
+                  )}                  </AnimatePresence>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+export default Navbar;

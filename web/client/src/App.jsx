@@ -1,0 +1,91 @@
+import { Suspense } from "react";
+import { Routes, Route } from "react-router-dom";
+import { Toaster } from "react-hot-toast";
+
+import AppLayout, { AuthLayout, MinimalLayout } from "./components/layout/AppLayout";
+import ProtectedRoute from "./components/common/ProtectedRoute";
+import LoadingScreen from "./components/common/LoadingScreen";
+import ScrollToTop from "./components/common/ScrollToTop";
+
+import Home from "./pages/Home";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
+import StoryList from "./pages/StoryList";
+import Feed from "./pages/Feed";
+import StoryDetail from "./pages/StoryDetail";
+import Trending from "./pages/Trending";
+import AuthorProfile from "./pages/AuthorProfile";
+import About from "./pages/About";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
+import ContentPolicy from "./pages/ContentPolicy";
+import BookExpert from "./pages/BookExpert";
+import ConsultSearch from "./pages/ConsultSearch";
+import Consultation from "./pages/Consultation";
+import MyBookings from "./pages/MyBookings";
+import {
+  ConsultationRedirect,
+  PaymentRedirect,
+} from "./pages/PortalRedirect";
+import Profile from "./pages/Profile";
+import ProfileEdit from "./pages/ProfileEdit";
+import NotFound from "./pages/NotFound";
+
+function LazyFallback() {
+  return <LoadingScreen message="Loading page..." />;
+}
+
+export default function App() {
+  return (
+    <>
+      <ScrollToTop />
+      <Suspense fallback={<LazyFallback />}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/stories" element={<StoryList />} />
+            <Route path="/feed" element={<Feed />} />
+            <Route path="/feed/story/:slug" element={<StoryDetail />} />
+            <Route path="/trending" element={<Trending />} />
+            <Route path="/authors/:id" element={<AuthorProfile />} />
+            <Route path="/consult" element={<Consultation />} />
+            <Route path="/consult/book" element={<ConsultSearch />} />
+            <Route path="/consult/book/:expertId" element={<BookExpert />} />
+            {/* Live sessions and checkout moved to their own portals —
+                these routes only hand the session off and redirect. */}
+            <Route path="/consult/:consultationId/pay" element={<ProtectedRoute><PaymentRedirect /></ProtectedRoute>} />
+            <Route path="/consult/:consultationId/session" element={<ProtectedRoute><ConsultationRedirect /></ProtectedRoute>} />
+            <Route path="/bookings" element={<ProtectedRoute><MyBookings /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+            <Route path="/profile/edit" element={<ProtectedRoute><ProfileEdit /></ProtectedRoute>} />
+            <Route path="/about" element={<About />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/guidelines" element={<ContentPolicy />} />
+          </Route>
+
+          <Route element={<AuthLayout />}>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+          </Route>
+
+          <Route element={<MinimalLayout />}>
+            <Route path="*" element={<NotFound />} />
+          </Route>
+        </Routes>
+      </Suspense>
+
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: { borderRadius: "12px", padding: "12px 16px", fontSize: "14px" },
+          success: { iconTheme: { primary: "#16a34a", secondary: "#fff" } },
+          error: { iconTheme: { primary: "#dc2626", secondary: "#fff" } },
+        }}
+      />
+    </>
+  );
+}

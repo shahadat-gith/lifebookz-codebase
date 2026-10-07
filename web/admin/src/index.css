@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@theme {
+  /* LifeBookz Brand — Deep Navy + Coral (matches client & author portals) */
+  --color-primary: #172554;
+  --color-primary-foreground: #ffffff;
+
+  --color-secondary: #2e3f66;
+  --color-secondary-foreground: #f8fafc;
+
+  /* Signature Coral Accent (brand dot over the "Z") */
+  --color-accent: #f43f5e;
+  --color-accent-foreground: #ffffff;
+
+  /* Background - Soft Cool White */
+  --color-background: #f8f9fd;
+  --color-foreground: #101b3c;
+
+  /* Surfaces - Clean Floating Panels */
+  --color-card: #ffffff;
+  --color-card-foreground: #101b3c;
+
+  --color-popover: #ffffff;
+  --color-popover-foreground: #101b3c;
+
+  /* Muted - Cool Studio Grays */
+  --color-muted: #f1f3f9;
+  --color-muted-foreground: #5f6c84;
+
+  /* Borders & Focus Rings */
+  --color-border: #e3e8f2;
+  --color-input: #d3dbe8;
+  --color-ring: #172554;
+
+  /* Functional Statuses */
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-destructive: #e11d48;
+  --color-info: #2563eb;
+
+  /* Premium Smooth Radii Scale */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+  /* Deep High-End Editorial Shadows */
+  --shadow-xs: 0 1px 2px rgba(23, 37, 84, 0.04);
+  --shadow-sm: 0 2px 8px rgba(23, 37, 84, 0.05);
+  --shadow-md: 0 8px 24px rgba(23, 37, 84, 0.07);
+  --shadow-lg: 0 16px 40px rgba(23, 37, 84, 0.1);
+
+  /* Typography */
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", system-ui, sans-serif;
+
+  /* Two-tone wordmark: the "Life" half adapts to the theme (darker on
+     light, whitish on dark); the "bookz" half stays brand coral. */
+  --color-brand-wordmark: #172554;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+
+    --color-brand-wordmark: #e8edf8;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased tracking-tight;
+  }
+
+  ::selection {
+    @apply bg-accent/20 text-foreground;
+  }
+}
+
+button {
+  cursor: pointer;
+}
+

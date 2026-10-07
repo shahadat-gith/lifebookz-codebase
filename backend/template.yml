@@ -1,0 +1,46 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: LifeBookz Backend API
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    Architectures:
+      - x86_64
+    Timeout: 30
+    MemorySize: 512
+
+Resources:
+  LifeBookzApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: lifebookz-api
+      CodeUri: .
+      Handler: handler.handler
+
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LifeBookzHttpApi
+            PayloadFormatVersion: "2.0"
+
+  LifeBookzHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: "$default"
+
+      Domain:
+        DomainName: api.lifebookz.com
+        CertificateArn: arn:aws:acm:ap-south-1:181511516600:certificate/bed446a0-5005-4495-840c-0ba57b5c8640
+        EndpointConfiguration: REGIONAL
+        BasePath:
+          - /
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint
+    Value: !Sub
+      - "https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com"
+      - ApiId: !Ref LifeBookzHttpApi
