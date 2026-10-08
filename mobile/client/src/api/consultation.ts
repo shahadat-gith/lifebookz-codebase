@@ -49,9 +49,15 @@ export async function createRequest({
   return res.data.data;
 }
 
-export async function listMine(): Promise<Consultation[]> {
-  const res = await api.get("/consultations/mine");
-  return res.data.data;
+export async function listMine({ limit, page }: { limit?: number; page?: number } = {}): Promise<Consultation[]> {
+  const res = await api.get("/consultations/mine", {
+    params: {
+      ...(limit ? { limit } : {}),
+      ...(page ? { page } : {}),
+    },
+  });
+  const data = res.data.data;
+  return Array.isArray(data) ? data : data?.consultations || data?.items || [];
 }
 
 export async function getConsultation(id: string): Promise<Consultation> {

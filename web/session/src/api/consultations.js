@@ -39,6 +39,16 @@ export async function endSession(id, reason) {
   return res.data.data;
 }
 
+/**
+ * No-show protection: the client cancels a CONFIRMED booking when the
+ * expert hasn't joined within the grace window. Same endpoint the client
+ * portal uses — the backend re-authorizes caller + state server-side.
+ */
+export async function cancelConsultation(id, reason) {
+  const res = await api.post(`/consultations/${id}/cancel`, reason ? { reason } : {});
+  return res.data.data;
+}
+
 // ---------------------------------------------------------------------------
 // Rating (client side, after the meeting)
 // ---------------------------------------------------------------------------

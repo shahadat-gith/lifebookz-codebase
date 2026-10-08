@@ -16,6 +16,10 @@ import {
 } from "./mailer.service.js";
 import * as paymentService from "./payment.service.js";
 import { ensureChimeSession, deleteChimeMeeting } from "./chime.service.js";
+import {
+  publishToConsultation,
+  publishToExpert,
+} from "./realtime.service.js";
 
 import {
   authenticationError,
@@ -339,6 +343,15 @@ export async function createConsultation({ user, input }) {
     problem: cleanProblem,
   });
 
+  // Live ping: the expert's dashboard (and any socket registered for this
+  // expert) learns about the new request instantly.
+  publishToExpert(expert.id || expert._id, {
+    event: "consultation.new",
+    consultationId: consultation.id || consultation._id,
+    expertId: String(expert.id || expert._id),
+    consultation: { _id: consultation.id || consultation._id, status: "PENDING" },
+  }).catch(() => {});
+
   return consultation;
 }
 
@@ -350,18 +363,38 @@ function participantFilter(id, role, extra = {}) {
   return role === "expert" ? { expert: id, ...extra } : { user: id, ...extra };
 }
 
-export async function listMine({ userId, role = "user", status }) {
+export async function listMine({ userId, role = "user", status, limit, page }) {
   if (!userId) throw authenticationError("Authentication required.");
 
   const extra = {};
   if (status && CONSULTATION_STATUSES.includes(status)) extra.status = status;
 
-  return Consultation.find(participantFilter(userId, role, extra))
-    .populate("expert", "fullName username expertise avatar rating ratingCount price")
-    .populate("user", "fullName username avatar")
-    .sort({ createdAt: -1 })
-    .limit(100)
-    .lean();
+  // Server-side pagination: default 10 per page, hard-capped at 100 so a
+  // hand-crafted query can never pull the whole history in one go.
+  const lim = Math.min(Math.max(Number.parseInt(limit, 10) || 10, 1), 100);
+  const pg = Math.max(Number.parseInt(page, 10) || 1, 1);
+  const skip = (pg - 1) * lim;
+
+  const filter = participantFilter(userId, role, extra);
+
+  const [consultations, total] = await Promise.all([
+    Consultation.find(filter)
+      .populate("expert", "fullName username expertise avatar rating ratingCount price")
+      .populate("user", "fullName username avatar")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(lim)
+      .lean(),
+    Consultation.countDocuments(filter),
+  ]);
+
+  return {
+    consultations,
+    total,
+    page: pg,
+    limit: lim,
+    hasMore: skip + consultations.length < total,
+  };
 }
 
 export async function getForParticipant({ id, role, userId }) {
@@ -475,6 +508,14 @@ export async function acceptConsultation({ expertId, consultationId }) {
     amountLabel: `₹${(amount / 100).toFixed(0)}`,
   });
 
+  // Live ping: the client's waiting screen flips to its Pay step the moment
+  // this lands.
+  publishToConsultation(confirmed.id, {
+    event: "consultation.confirmed",
+    consultationId: confirmed.id,
+    consultation: { _id: confirmed.id, status: "CONFIRMED" },
+  }).catch(() => {});
+
   return confirmed;
 }
 
@@ -505,6 +546,12 @@ export async function declineConsultation({ expertId, consultationId, reason }) 
     status: "cancelled",
     reason: consultation.cancelReason,
   });
+
+  publishToConsultation(consultation.id, {
+    event: "consultation.cancelled",
+    consultationId: consultation.id,
+    consultation: { _id: consultation.id, status: "CANCELLED" },
+  }).catch(() => {});
 
   return consultation;
 }
@@ -540,6 +587,12 @@ export async function cancelConsultation({ userId, role, consultationId, reason 
   if (!consultation) {
     throw conflictError("This consultation can no longer be cancelled.");
   }
+
+  publishToConsultation(consultation.id, {
+    event: "consultation.cancelled",
+    consultationId: consultation.id,
+    consultation: { _id: consultation.id, status: "CANCELLED" },
+  }).catch(() => {});
 
   return consultation;
 }
@@ -805,6 +858,16 @@ export async function joinSession({ consultationId, userId, role }) {
 
   if (!updated) throw conflictError("This session can no longer be joined.");
 
+  // Live ping: the expert's waiting room flips to "client has joined" and
+  // the client's screens sync — the socket is a signal, the API is truth.
+  if (updated.status !== consultation.status) {
+    publishToConsultation(updated.id, {
+      event: "consultation.updated",
+      consultationId: updated.id,
+      consultation: { _id: updated.id, status: updated.status },
+    }).catch(() => {});
+  }
+
   return sessionView(updated, side);
 }
 
@@ -897,6 +960,14 @@ export async function endSession({ consultationId, userId, role, reason }) {
     bookingsUrl: (config.frontend.client || "").replace(/\/$/, "") + "/bookings",
   });
 
+  // Live ping: THE rating-flow driver — the mobile app flips its user to the
+  // in-app rating screen the moment this frame lands (no web rating page).
+  publishToConsultation(updated.id, {
+    event: "consultation.completed",
+    consultationId: updated.id,
+    consultation: { _id: updated.id, status: "COMPLETED" },
+  }).catch(() => {});
+
   return sessionView(updated, side);
 }
 
@@ -925,6 +996,11 @@ async function forceComplete(consultation) {
     logger.info("Stale consultation session force-completed", {
       consultationId: consultation.id,
     });
+    publishToConsultation(consultation.id, {
+      event: "consultation.completed",
+      consultationId: consultation.id,
+      consultation: { _id: consultation.id, status: "COMPLETED" },
+    }).catch(() => {});
   }
 }
 

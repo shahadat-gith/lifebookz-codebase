@@ -27,13 +27,19 @@ Everything travels as JSON frames over one `wss://` connection.
   "consultation": { "_id": "cs_123", "status": "CONFIRMED", "...": "..." } }
 { "event": "consultation.cancelled",  "consultationId": "cs_123" }
 { "event": "consultation.expired",    "consultationId": "cs_123" }
+{ "event": "consultation.completed",  "consultationId": "cs_123",
+  "consultation": { "_id": "cs_123", "status": "COMPLETED", "...": "..." } }
 { "event": "consultation.new",        "consultationId": "cs_123", "expertId": "ex_abc" }
 ```
 
 Event names consumed today (mobile `src/api/realtime.ts` is generic — it
 matches on `consultationId` — and the expert hook triggers a refetch on any
 event):
-- `consultation.confirmed` / `cancelled` / `expired` / `updated` / `new`
+- `consultation.confirmed` / `cancelled` / `expired` / `completed` / `updated` / `new`
+
+`consultation.completed` is what drives the mobile app's return-to-app
+rating flow: when the meeting closes, the app flips the user to its
+in-app rating screen (no web rating page).
 
 ---
 
@@ -75,13 +81,58 @@ GSI-1: expertId → find sockets to notify when an expert's consultations change
 | `register`    | ws-register       | tag connection with expertId                      |
 | `ping`        | ws-ping           | return same frame to keep the socket warm         |
 
-## 4. Emit points (inside the existing consultation Lambdas)
+## 4. Emit points — NOW IMPLEMENTED IN THE API BACKEND
 
-- `POST /consultations/requests` → after the record is **PENDING**, push
-  `consultation.new` to sockets tagged with that `expertId`.
-- Expert confirms (dashboard action) → push `consultation.confirmed` to
-  sockets subscribed to that consultation.
-- Cancel/expiry anywhere → push matching event.
+`backend/src/services/realtime.service.js` pushes frames natively from the
+main API (no separate Lambdas needed). It is **enabled by two env vars**:
+
+```
+WS_API_ENDPOINT=https://<api-id>.execute-api.<region>.amazonaws.com/prod
+WS_CONNECTIONS_TABLE=lif_bookz_ws_connections
+```
+
+Until `WS_API_ENDPOINT` is set, pushes are disabled and clients fall back
+to polling (everything still works, just not instantly).
+
+The service scans the connection registry table for targets. The registry
+rows (maintained by the WS `$connect`/`subscribe`/`register` Lambdas) must
+carry, per connection:
+
+- `connectionId` — primary key (used to prune dead connections on
+  `GoneException`)
+- `consultationId` OR a `consultationIds` list — written by `subscribe`
+- `expertId` — written by `register` (needed for `consultation.new`)
+
+Attribute names are configurable via `WS_ATTR_*` env vars if your table
+differs.
+
+Emit points wired in `consultations.service.js`:
+
+- `POST /consultations/requests` → `consultation.new` to the expert's
+  registered sockets.
+- Expert confirms → `consultation.confirmed` to sockets subscribed to that
+  consultation.
+- `POST /consultations/:id/session/join` (status → IN_PROGRESS) →
+  `consultation.updated` — the expert's waiting room flips to
+  "client has joined".
+- `POST /consultations/:id/session/end` (status → COMPLETED) →
+  `consultation.completed` — the mobile app flips its user to the in-app
+  rating screen (no web rating page).
+- Cancel/decline/stale-sweep → `consultation.cancelled` /
+  `consultation.completed`.
+
+## 4b. Platform marker on portal URLs
+
+The mobile app opens portals with `?platform=mobile`; web surfaces use
+`?platform=web` or none. The session room persists the marker in
+`sessionStorage` and, on meeting end:
+
+- `platform=mobile` → deep link `lifebookz://consult/rate?consultationId=…`
+  (in-app rating; the web rating page is never shown)
+- otherwise → the session portal's web rating page
+
+The payment portal forwards the marker onto its post-payment redirect so
+the marker survives the pay → join hop.
 
 ## 5. AWS Console checklist (step by step)
 

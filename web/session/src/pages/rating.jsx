@@ -76,6 +76,20 @@ export default function RatingPage() {
   const clientBase = (import.meta.env.VITE_CLIENT_URL || "").replace(/\/$/, "");
   const expertName = consultation?.expert?.fullName || "your expert";
 
+  // ?platform=mobile (persisted by the meeting page) — the user came from
+  // the LifeBookz app, so all exits lead back INTO the app, never to the
+  // web client portal.
+  let platform = "";
+  try {
+    platform =
+      (new URLSearchParams(window.location.search).get("platform") || "").toLowerCase() ||
+      sessionStorage.getItem("lbz_platform") ||
+      "";
+  } catch {
+    /* storage unavailable */
+  }
+  const isMobileApp = platform === "mobile";
+
   return (
     <div className="flex min-h-screen flex-col bg-background font-sans text-foreground">
       <header className="flex items-center justify-center border-b border-border/60 bg-card/60 px-4 py-3">
@@ -100,9 +114,9 @@ export default function RatingPage() {
                 Something went wrong
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">{message}</p>
-              {clientBase && (
+              {(isMobileApp ? true : !!clientBase) && (
                 <a
-                  href={`${clientBase}/bookings`}
+                  href={isMobileApp ? "lifebookz://bookings" : `${clientBase}/bookings`}
                   className="mt-6 inline-flex items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
                 >
                   Back to My Bookings
@@ -177,9 +191,9 @@ export default function RatingPage() {
                   />
                 ))}
               </div>
-              {clientBase && (
+              {(isMobileApp ? true : !!clientBase) && (
                 <a
-                  href={`${clientBase}/bookings`}
+                  href={isMobileApp ? "lifebookz://bookings" : `${clientBase}/bookings`}
                   className="mt-6 inline-flex items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
                 >
                   Back to My Bookings

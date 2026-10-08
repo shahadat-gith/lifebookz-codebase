@@ -78,12 +78,6 @@ export default function ConsultResultsScreen() {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <BackBar onPress={() => router.back()} />
 
-        <Text style={[styles.title, { color: theme.text }]}>Your matches</Text>
-        <Text style={[styles.subtitle, { color: theme.textMuted }]}>
-          {category ? `${getCategoryLabel(category)} · ` : ""}
-          Best-fit experts for your situation, ranked first.
-        </Text>
-
         {matches.isLoading ? (
           <View style={{ gap: Spacing.lg, marginTop: Spacing.lg }}>
             {[0, 1, 2].map((i) => (
@@ -191,7 +185,7 @@ const styles = StyleSheet.create({
   scroll: { padding: Spacing.lg, paddingBottom: Spacing.xxl },
   title: { fontSize: 26, fontWeight: "800", marginTop: Spacing.sm },
   subtitle: { fontSize: 13, marginTop: 2, marginBottom: Spacing.xl },
-  count: { fontSize: 16, fontWeight: "700" },
+  count: { fontSize: 14, fontWeight: "500" },
 
   expertCard: {
     borderRadius: Radius.lg,

@@ -52,6 +52,12 @@ const P = {
       <path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
     </>
   ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" />
+    </>
+  ),
 };
 
 export { P as Paths };

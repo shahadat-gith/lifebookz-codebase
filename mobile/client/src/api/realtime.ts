@@ -18,6 +18,7 @@ export type ConsultationEventName =
   | "consultation.cancelled"
   | "consultation.expired"
   | "consultation.updated"
+  | "consultation.completed"
   | "ping";
 
 export interface ConsultationEvent {

@@ -58,6 +58,31 @@ export const config = {
       // AWS media region where Chime meetings are hosted (Mumbai for India).
       mediaRegion: process.env.CHIME_MEDIA_REGION || "ap-south-1",
     },
+
+    // Realtime fan-out (API Gateway WebSocket). Pushes are DISABLED until
+    // `endpoint` is set — clients fall back to polling.
+    ws: {
+      // Example: https://53bt496mv6.execute-api.ap-south-1.amazonaws.com/prod
+      endpoint: process.env.WS_API_ENDPOINT,
+      // DynamoDB connection registry maintained by the WS $connect/
+      // subscribe/register Lambdas.
+      connectionsTable:
+        process.env.WS_CONNECTIONS_TABLE || "lif_bookz_ws_connections",
+      // Registry attribute names (configurable so the service survives any
+      // reasonable table layout without code changes).
+      attrConsultation: process.env.WS_ATTR_CONSULTATION || "consultationId",
+      attrConsultations: process.env.WS_ATTR_CONSULTATIONS || "consultationIds",
+      attrExpert: process.env.WS_ATTR_EXPERT || "expertId",
+    },
+
+    // Direct DynamoDB access (currently only the WS connection registry).
+    dynamodb: {
+      region: process.env.AWS_REGION || process.env.SES_REGION || "ap-south-1",
+      // The WS connection registry — kept here as the single place that
+      // names it, in case more tables join later.
+      connectionsTable:
+        process.env.WS_CONNECTIONS_TABLE || "lif_bookz_ws_connections",
+    },
   },
 
   razorpay: {

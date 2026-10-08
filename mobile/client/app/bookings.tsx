@@ -1,8 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Modal,
-  Pressable,
-  TextInput,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,22 +9,26 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "../src/context/AuthContext";
 import { ConsultFormSheet } from "../src/components/ConsultFormSheet";
 import { BookingListSkeleton } from "../src/components/Skeleton";
 import { useToast } from "../src/components/Toast";
 import * as consultApi from "../src/api/consultation";
+import { getSharedSocket } from "../src/api/realtime";
 import { openPayment, openConsultation } from "../src/utils/handoff";
 import { apiErrorMessage, formatDate } from "../src/utils/helpers";
 import { getCategoryLabel } from "../src/utils/consult";
-import { BackBar, Badge, Button, EmptyState, ErrorState, LoadingScreen, ScreenHeader } from "../src/components/ui";
+import { BackBar, Badge, Button, EmptyState, ErrorState, ScreenHeader } from "../src/components/ui";
 import { Radius, Spacing, useTheme } from "../src/theme";
 import type { Consultation } from "../src/types";
 
 const UPCOMING: string[] = ["PENDING", "CONFIRMED", "IN_PROGRESS"];
 const HISTORY: string[] = ["COMPLETED", "CANCELLED", "EXPIRED"];
+
+/** Stable empty list so derived arrays keep their identity between renders. */
+const EMPTY_ITEMS: Consultation[] = [];
 
 export default function BookingsScreen() {
   const scheme = useColorScheme();
@@ -38,16 +39,101 @@ export default function BookingsScreen() {
 
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [checkingId, setCheckingId] = useState<string | null>(null);
-  const [ratingTarget, setRatingTarget] = useState<Consultation | null>(null);
   const [consultOpen, setConsultOpen] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
+  // --- Limited fetching: 10 now, "Show more" appends the next 10 ----------
+  const PAGE_SIZE = 10;
   const bookings = useQuery({
     queryKey: ["consultations", "mine"],
     enabled: isAuthenticated,
-    queryFn: () => consultApi.listMine(),
+    queryFn: () => consultApi.listMine({ limit: PAGE_SIZE, page: 1 }),
   });
 
-  const consultations = bookings.data || [];
+  // Appended pages live alongside a snapshot id of the base fetch
+  // (dataUpdatedAt). When the base list refetches, the snapshot no longer
+  // matches and the derived value resets — no setState-in-effect needed.
+  const [more, setMore] = useState<{
+    baseUpdatedAt: number;
+    items: Consultation[];
+    page: number;
+    allFetched: boolean;
+  } | null>(null);
+  const base = useMemo(() => bookings.data || [], [bookings.data]);
+  const extrasActive = !!more && more.baseUpdatedAt === (bookings.dataUpdatedAt || 0);
+  const moreItems = extrasActive ? (more as { items: Consultation[] }).items : EMPTY_ITEMS;
+  const extras = extrasActive ? (more as NonNullable<typeof more>) : {
+    baseUpdatedAt: bookings.dataUpdatedAt || 0,
+    items: EMPTY_ITEMS,
+    page: 1,
+    allFetched: base.length < PAGE_SIZE,
+  };
+
+  const loadMore = async () => {
+    if (extras.allFetched || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const next = await consultApi.listMine({ limit: PAGE_SIZE, page: extras.page + 1 });
+      const known = new Set([...base, ...moreItems].map((c) => c._id || c.id));
+      const fresh = next.filter((c) => !known.has(c._id || c.id));
+      setMore({
+        baseUpdatedAt: bookings.dataUpdatedAt || 0,
+        items: [...moreItems, ...fresh],
+        page: extras.page + 1,
+        allFetched: next.length < PAGE_SIZE || fresh.length === 0,
+      });
+    } catch {
+      toast.error("Could not load more sessions.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const consultations = useMemo(() => [...base, ...moreItems], [base, moreItems]);
+  const consultationKey = useMemo(
+    () => consultations.map((c) => c._id || c.id).join(","),
+    [consultations],
+  );
+
+  const queryClient = useQueryClient();
+
+  // Live session-end events: the backend pushes consultation.completed over
+  // the WebSocket when the meeting closes (docs/realtime-websocket-
+  // backend.md §4). The app flips to the in-app rating page the moment it
+  // lands — no refresh, and the web rating page is never seen. The socket
+  // is a signal, the API is the truth: each event just invalidates queries.
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    const socket = getSharedSocket();
+    if (!socket) return undefined;
+    socket.connect();
+
+    const upcomingIds = consultations
+      .filter((c) => UPCOMING.includes(c.status || ""))
+      .map((c) => (c._id || c.id) as string)
+      .filter(Boolean);
+    upcomingIds.forEach((id) => socket.subscribe(id));
+
+    const off = socket.on((event) => {
+      const cid = (event.consultationId ||
+        event.consultation?._id ||
+        event.consultation?.id) as string | undefined;
+      if (!cid) return;
+      queryClient.invalidateQueries({ queryKey: ["consultations"] });
+      const status = event.consultation?.status as string | undefined;
+      if (status === "COMPLETED" || event.event === "consultation.completed") {
+        toast.success("Session ended — rate your expert!");
+        router.push({ pathname: "/consult/rate", params: { consultationId: cid } });
+      }
+    });
+    return () => {
+      upcomingIds.forEach((id) => socket.unsubscribe(id));
+      off();
+    };
+    // consultationKey keeps the effect from re-running on every render —
+    // it only changes when the actual set of consultations changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, consultationKey, queryClient, router]);
   const upcoming = consultations.filter((c) => UPCOMING.includes(c.status || ""));
   const history = consultations.filter((c) => HISTORY.includes(c.status || ""));
 
@@ -60,6 +146,17 @@ export default function BookingsScreen() {
         await openPayment("consultation", id);
       } else {
         await openConsultation(id);
+        // The in-app browser was dismissed — if the meeting ended while it
+        // was open, take the user straight to the in-app rating page.
+        try {
+          const fresh = await consultApi.getConsultation(id);
+          await bookings.refetch();
+          if ((fresh.status || "") === "COMPLETED" && !fresh.rating) {
+            router.push({ pathname: "/consult/rate", params: { consultationId: id } });
+          }
+        } catch {
+          /* the list already refetched — nothing more to do */
+        }
       }
     } catch (err) {
       toast.error(
@@ -85,18 +182,8 @@ export default function BookingsScreen() {
     }
   }
 
-  async function handleRate(score: number, review: string) {
-    if (!ratingTarget) return;
-    const id = (ratingTarget._id || ratingTarget.id) as string;
-    try {
-      await consultApi.rate(id, score, review);
-      toast.success("Thanks for your rating!");
-      setRatingTarget(null);
-      await bookings.refetch();
-    } catch (err) {
-      toast.error(apiErrorMessage(err, "Could not submit your rating."));
-    }
-  }
+  // Rating moved to its own screen (/consult/rate) — the same page the
+  // session room deep-links back into when a meeting ends in the app.
 
   if (!authLoading && !isAuthenticated) {
     return (
@@ -152,7 +239,7 @@ export default function BookingsScreen() {
                   joining={checkingId === (c._id || c.id)}
                   onJoin={() => handleJoin(c)}
                   onCancel={() => handleCancel((c._id || c.id) as string)}
-                  onRate={() => setRatingTarget(c)}
+                  onRate={() => router.push({ pathname: "/consult/rate", params: { consultationId: (c._id || c.id) as string } })}
                 />
               ))}
             </Section>
@@ -169,30 +256,26 @@ export default function BookingsScreen() {
                   joining={checkingId === (c._id || c.id)}
                   onJoin={() => handleJoin(c)}
                   onCancel={() => handleCancel((c._id || c.id) as string)}
-                  onRate={() => setRatingTarget(c)}
+                  onRate={() => router.push({ pathname: "/consult/rate", params: { consultationId: (c._id || c.id) as string } })}
                 />
               ))}
             </Section>
           )}
 
-          <Button
-            label="Request another session"
-            variant="outline"
-            icon="add"
-            onPress={() => setConsultOpen(true)}
-            style={{ marginTop: Spacing.xl }}
-          />
+          {!extras.allFetched && consultations.length > 0 && (
+            <Button
+              label={loadingMore ? "Loading…" : "Show more"}
+              variant="outline"
+              onPress={loadMore}
+              loading={loadingMore}
+              disabled={loadingMore}
+              fullWidth
+            />
+          )}
         </ScrollView>
       )}
 
       <ConsultFormSheet visible={consultOpen} onClose={() => setConsultOpen(false)} />
-
-      <RatingModal
-        visible={!!ratingTarget}
-        expertName={ratingTarget?.expert?.fullName || "your expert"}
-        onClose={() => setRatingTarget(null)}
-        onSubmit={handleRate}
-      />
     </SafeAreaView>
   );
 }
@@ -290,73 +373,6 @@ function BookingCard({
   );
 }
 
-function RatingModal({
-  visible,
-  expertName,
-  onClose,
-  onSubmit,
-}: {
-  visible: boolean;
-  expertName: string;
-  onClose: () => void;
-  onSubmit: (score: number, review: string) => void;
-}) {
-  const scheme = useColorScheme();
-  const theme = useTheme(scheme === "dark");
-  const [score, setScore] = useState(0);
-  const [review, setReview] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={[styles.modalCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <Text style={[styles.modalTitle, { color: theme.text }]}>
-            Rate your session with {expertName}
-          </Text>
-
-          <View style={styles.stars}>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <Pressable key={n} onPress={() => setScore(n)} hitSlop={4}>
-                <Ionicons
-                  name={n <= score ? "star" : "star-outline"}
-                  size={32}
-                  color={n <= score ? theme.accent : theme.textMuted}
-                />
-              </Pressable>
-            ))}
-          </View>
-
-          <TextInput
-            style={[styles.reviewInput, { color: theme.text, borderColor: theme.border }]}
-            value={review}
-            onChangeText={setReview}
-            placeholder="What went well? (optional)"
-            placeholderTextColor={theme.textMuted}
-            multiline
-            textAlignVertical="top"
-          />
-
-          <View style={styles.modalActions}>
-            <Button label="Cancel" variant="ghost" onPress={onClose} />
-            <Button
-              label="Submit"
-              onPress={async () => {
-                if (score === 0) return;
-                setSubmitting(true);
-                await onSubmit(score, review.trim());
-                setSubmitting(false);
-              }}
-              disabled={score === 0 || submitting}
-              loading={submitting}
-            />
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   header: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
   scroll: { padding: Spacing.lg, paddingBottom: Spacing.xxl },
@@ -382,33 +398,4 @@ const styles = StyleSheet.create({
   center: { alignItems: "center", justifyContent: "center", padding: Spacing.xxl },
   stateTitle: { fontSize: 18, fontWeight: "700" },
   stateBody: { fontSize: 14, lineHeight: 20, maxWidth: 300 },
-
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: Spacing.xl,
-  },
-  modalCard: {
-    width: "100%",
-    borderRadius: Radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: Spacing.xl,
-  },
-  modalTitle: { fontSize: 17, fontWeight: "800" },
-  stars: { flexDirection: "row", gap: Spacing.sm, marginVertical: Spacing.lg },
-  reviewInput: {
-    borderWidth: 1,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    minHeight: 80,
-    fontSize: 14,
-  },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: Spacing.md,
-    marginTop: Spacing.lg,
-  },
 });

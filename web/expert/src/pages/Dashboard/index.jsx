@@ -34,6 +34,8 @@ const FILTERS = [
   { id: "closed", label: "Closed", statuses: ["CANCELLED", "EXPIRED"] },
 ];
 
+const POLL_INTERVAL_MS = 30_000; // visible-tab fallback when the socket misses a frame
+
 function categoryLabel(id) {
   if (!id) return "—";
   return CONSULT_CATEGORIES.find((c) => c.id === id)?.label || id;
@@ -110,10 +112,10 @@ export default function Dashboard() {
     }
   }, [loadConsultations]);
 
-  const { status: wsStatus } = useRealtimeConsultations((event) => {
+  const { status: wsStatus, subscribe } = useRealtimeConsultations((event) => {
     // Tolerant matching: whatever frame shape the backend pushes, treat any
     // non-ping message as "something changed" and refetch.
-    if (!event || event.event === "ping") return;
+    if (!event || event.event === "ping" || event.payload?.event === "ping") return;
     if (
       event.event === "consultation.new" ||
       event.type === "consultation.new"
@@ -125,13 +127,26 @@ export default function Dashboard() {
     refreshFromEvent();
   }, expertId);
 
-  // Safety net: refetch every 60s while the tab is visible, so the list
+  // After every successful list load, make sure the socket is subscribed to
+  // each visible consultation id — the same routing path the client's
+  // waiting screen uses (which demonstrably works), covering status-change
+  // frames even if the backend's expertId routing isn't wired up yet.
+  const lastSubscribedRef = useRef("");
+  useEffect(() => {
+    if (loading) return;
+    const signature = consultations.map((c) => c._id || c.id).join(",");
+    if (signature === lastSubscribedRef.current) return;
+    lastSubscribedRef.current = signature;
+    consultations.forEach((c) => subscribe(c._id || c.id));
+  }, [consultations, loading, subscribe]);
+
+  // Safety net: refetch every 30s while the tab is visible, so the list
   // stays correct even if the socket drops or the backend skips a frame.
   useEffect(() => {
     if (!expertId) return undefined;
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") refreshFromEvent();
-    }, 60_000);
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [expertId, refreshFromEvent]);
 
@@ -258,6 +273,17 @@ export default function Dashboard() {
       setBusyId(null);
     }
   };
+
+  /**
+   * Confirming a request hands the expert straight to the live waiting
+   * room, which walks them through "client is paying → client joined —
+   * join now" instead of dropping them back on the list.
+   */
+  const handleAccept = (id) =>
+    run(id, async () => {
+      await consultApi.accept(id);
+      navigate(`/session-wait/${id}`);
+    });
 
   if (authLoading || loading) {
     return <LoadingScreen message="Loading your expert workspace..." />;
@@ -528,7 +554,7 @@ export default function Dashboard() {
                           <Button
                             size="sm"
                             loading={busy}
-                            onClick={run(id, () => consultApi.accept(id))}
+                            onClick={handleAccept(id)}
                             icon={<Icons.check />}
                           >
                             Accept

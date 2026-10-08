@@ -7,6 +7,7 @@ import config from "./config/index.js";
 import apiRoutes from "./routes/index.js";
 import requestLogger from "./middleware/requestLogger.js";
 import errorHandler from "./middleware/errorHandler.js";
+import { apiLimiter, authLimiter } from "./middleware/rateLimit.js";
 
 const app = express();
 
@@ -45,6 +46,14 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Records every request that ends in 4xx/5xx (registered before the routes
 // so the response "finish" listener is always attached).
 app.use(requestLogger);
+
+// Rate limiting — global ceiling on the API (bot probes and the Razorpay
+// webhook skip it), plus a strict failed-attempt limiter on every
+// credential route to make password brute-force useless.
+app.use("/api/v1", apiLimiter);
+for (const prefix of ["/users", "/experts", "/authors", "/admin", "/developer"]) {
+  app.use(`/api/v1${prefix}`, authLimiter);
+}
 
 app.use("/api/v1", apiRoutes);
 

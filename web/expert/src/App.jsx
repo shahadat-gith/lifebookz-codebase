@@ -1,14 +1,16 @@
 import { Suspense, lazy } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
 import AppLayout, { AuthLayout, HomeLayout } from './components/layout/AppLayout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import LoadingScreen from './components/common/LoadingScreen';
 import ScrollToTop from './components/common/ScrollToTop';
+import { useAuth } from './context/AuthContext';
 
 const Home = lazy(() => import('./pages/Home'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const SessionWait = lazy(() => import('./pages/SessionWait'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -20,6 +22,17 @@ function LazyFallback() {
   return <LoadingScreen message="Loading..." />;
 }
 
+/**
+ * The marketing home is for signed-out visitors only — a signed-in expert
+ * never needs it, so it renders their dashboard instead.
+ */
+function HomeRoute({ children }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <LoadingScreen message="Checking session..." />;
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
 export default function App() {
   return (
     <>
@@ -27,7 +40,14 @@ export default function App() {
       <Suspense fallback={<LazyFallback />}>
         <Routes>
           <Route element={<HomeLayout />}>
-            <Route path="/" element={<Home />} />
+            <Route
+              path="/"
+              element={
+                <HomeRoute>
+                  <Home />
+                </HomeRoute>
+              }
+            />
           </Route>
 
           <Route element={<AppLayout />}>
@@ -41,6 +61,16 @@ export default function App() {
             />
             {/* Live sessions moved to consult.lifebookz.com — the dashboard's
                 Join button runs the cross-subdomain handoff directly. */}
+            {/* Live waiting room — where the expert tracks the client after
+                confirming (client paying → client joined → join now). */}
+            <Route
+              path="/session-wait/:id"
+              element={
+                <ProtectedRoute>
+                  <SessionWait />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/profile"
               element={

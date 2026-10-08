@@ -18,8 +18,11 @@ export function Navbar() {
 
   // Navigation lives in the profile dropdown, like the author portal — the
   // navbar itself stays quiet: brand on the left, account on the right.
+  // Signed-in experts work from the dashboard, so the Home entry disappears
+  // for them (visiting / redirects there anyway) and the brand clicks
+  // through to the dashboard too.
   const links = [
-    { to: "/", label: "Home", icon: Icons.home },
+    ...(isAuthenticated ? [] : [{ to: "/", label: "Home", icon: Icons.home }]),
     { to: "/dashboard", label: "Dashboard", icon: Icons.dashboard },
     { to: "/profile", label: "Profile", icon: Icons.user },
   ];
@@ -46,9 +49,9 @@ export function Navbar() {
         <div className="flex h-16 items-center justify-between md:h-[4.5rem]">
           {/* Brand — logo plus the two-tone wordmark from the theme token */}
           <Link
-            to="/"
+            to={isAuthenticated ? "/dashboard" : "/"}
             className="group flex shrink-0 items-center gap-2.5"
-            aria-label="LifeBookz — Home"
+            aria-label="LifeBookz"
           >
             <img
               src="/logo.png"

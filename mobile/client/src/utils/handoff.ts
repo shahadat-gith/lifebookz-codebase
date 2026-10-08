@@ -5,6 +5,11 @@
  * trades its JWT for a one-time ticket (POST /consultations/handoff) and
  * opens the portal in the system browser with the ticket in the URL hash —
  * the same credential system the web client uses, nothing new is trusted.
+ *
+ * Every portal URL carries `?platform=mobile`: the session room uses it to
+ * send the user BACK into the app for rating when the meeting ends (the
+ * web rating page is never shown), and the payment portal forwards it to
+ * the session room it opens after checkout.
  */
 import * as WebBrowser from "expo-web-browser";
 import * as SecureStore from "expo-secure-store";
@@ -23,7 +28,11 @@ function portalBase(envValue?: string) {
   return (envValue || "").replace(/\/$/, "");
 }
 
-/** Open the payment portal for a resource (e.g. "consultation"). */
+/** Open the payment portal for a resource (e.g. "consultation").
+ *  The app's scheme rides along (`?src=`) so the payment portal can
+ *  forward it to the session room it opens after checkout — keeping the
+ *  return-to-app rating flow intact across the whole journey.
+ */
 export async function openPayment(resource: string, resourceId: string) {
   const paymentBase = portalBase(process.env.EXPO_PUBLIC_PAYMENT_URL);
   if (!paymentBase) {
@@ -32,7 +41,9 @@ export async function openPayment(resource: string, resourceId: string) {
 
   const code = await mintTicket();
   await WebBrowser.openBrowserAsync(
-    `${paymentBase}/pay/${encodeURIComponent(resource)}/${encodeURIComponent(resourceId)}#tk=${code}`,
+    `${paymentBase}/pay/${encodeURIComponent(resource)}/${encodeURIComponent(
+      resourceId,
+    )}?platform=mobile#tk=${code}`,
   );
 }
 
@@ -45,6 +56,6 @@ export async function openConsultation(consultationId: string) {
 
   const code = await mintTicket();
   await WebBrowser.openBrowserAsync(
-    `${sessionBase}/session/${encodeURIComponent(consultationId)}#tk=${code}`,
+    `${sessionBase}/session/${encodeURIComponent(consultationId)}?platform=mobile#tk=${code}`,
   );
 }

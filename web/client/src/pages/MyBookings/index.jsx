@@ -20,6 +20,8 @@ import RatingDialog from "./components/RatingDialog";
  * matches its state: join the room (payment happens at its door), rate when
  * completed, cancel while still open.
  */
+const PAGE_SIZE = 10; // shown per "Show more" click, mirroring the expert dashboard
+
 export default function MyBookings() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
 
@@ -31,13 +33,22 @@ export default function MyBookings() {
   const [checkingId, setCheckingId] = useState(null);
   const [ratingTarget, setRatingTarget] = useState(null);
 
+  // --- Limited fetching: 10 now, "Show more" appends the next 10 ----------
+  const [page, setPage] = useState(1);
+  const [lastPageCount, setLastPageCount] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [allFetched, setAllFetched] = useState(false);
+
   const loadConsultations = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const data = await consultApi.listMine();
+      const data = await consultApi.listMine({ limit: PAGE_SIZE, page: 1 });
       setConsultations(data || []);
+      setLastPageCount((data || []).length);
+      setPage(1);
+      setAllFetched(false);
     } catch (err) {
       setError(
         err.response?.data?.error?.message ||
@@ -56,6 +67,33 @@ export default function MyBookings() {
     }
     loadConsultations();
   }, [authLoading, isAuthenticated, loadConsultations]);
+
+  /**
+   * "Show more" — deduped append of the next page. A page-param-less
+   * backend can return overlapping pages; dedupe by id guards against
+   * duplicate cards. A short page (less than PAGE_SIZE) means we're done.
+   */
+  const loadMore = useCallback(async () => {
+    if (allFetched || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const next = await consultApi.listMine({ limit: PAGE_SIZE, page: page + 1 });
+      const known = new Set(consultations.map((c) => c._id || c.id));
+      const fresh = (next || []).filter((c) => !known.has(c._id || c.id));
+      setLastPageCount((next || []).length);
+      setPage((p) => p + 1);
+      if (fresh.length > 0) {
+        setConsultations((prev) => [...prev, ...fresh]);
+      }
+      if ((next || []).length < PAGE_SIZE || fresh.length === 0) {
+        setAllFetched(true);
+      }
+    } catch {
+      toast.error("Could not load more sessions.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [allFetched, loadingMore, page, consultations]);
 
   /**
    * Join a session — the full journey runs through the dedicated portals.
@@ -221,6 +259,19 @@ export default function MyBookings() {
                 {history.map(renderCard)}
               </section>
             )}
+          </div>
+        )}
+
+        {consultations.length > 0 && !allFetched && (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-5 py-2 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
+            >
+              {loadingMore ? "Loading…" : "Show more"}
+            </button>
           </div>
         )}
 

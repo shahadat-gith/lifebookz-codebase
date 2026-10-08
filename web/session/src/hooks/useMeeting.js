@@ -31,6 +31,10 @@ export function useMeeting(consultationId) {
   const [chatMessages, setChatMessages] = useState([]);
   const [remoteVideoOn, setRemoteVideoOn] = useState(false);
   const [peerName, setPeerName] = useState("");
+  // True once the OTHER participant is actually present in the meeting
+  // (Chime attendee presence — fires even when their camera is off).
+  // Powers the client's "expert didn't show up" no-show timer.
+  const [remoteConnected, setRemoteConnected] = useState(false);
 
   const audioVideoRef = useRef(null);
   const heartbeatRef = useRef(null);
@@ -49,10 +53,14 @@ export function useMeeting(consultationId) {
   // user gestures can (re)start playback — mobile autoplay policies require
   // a gesture, and the element must live in the DOM to play at all.
   const remoteAudioElRef = useRef(null);
+  // Whether a user gesture has (or is expected to have) unlocked remote-audio
+  // playback on this page — mobile autoplay policies need one.
+  const audioUnlockedRef = useRef(false);
 
   const stopEverything = useCallback(() => {
     if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     heartbeatRef.current = null;
+    setRemoteConnected(false);
 
     try {
       audioVideoRef.current?.stop();
@@ -67,6 +75,27 @@ export function useMeeting(consultationId) {
       /* already gone */
     }
     remoteAudioElRef.current = null;
+  }, []);  /**
+   * Play the remote-audio element, with a short bounded retry. Phone
+   * browsers reject play() before a user gesture has "unlocked" them, but
+   * the tap that joined the room usually counts, so a few delayed retries
+   * land the sound without needing an explicit control press.
+   */
+  const playRemoteAudio = useCallback(() => {
+    const el = remoteAudioElRef.current;
+    if (!el) return;
+    let tries = 0;
+    const attempt = (delay) => {
+      setTimeout(() => {
+        const current = remoteAudioElRef.current;
+        if (!current) return; // session torn down — stop retrying
+        current.play?.().catch(() => {
+          tries += 1;
+          if (tries < 5) attempt(600);
+        });
+      }, delay);
+    };
+    attempt(0);
   }, []);
 
   const finish = useCallback(
@@ -255,6 +284,9 @@ export function useMeeting(consultationId) {
       audioVideo.addObserver({
         audioVideoDidStart: () => {
           setPhase((p) => (p === "connecting" ? "live" : p));
+          // Reconnect path: the meeting reconnected and playback stopped —
+          // resume remote audio automatically.
+          playRemoteAudio();
         },
         audioVideoDidStop: () => {
           // The meeting ended — the peer hung up or the session closed.
@@ -292,6 +324,21 @@ export function useMeeting(consultationId) {
         },
       });
 
+      // Attendee presence — the reliable "is the other side actually in the
+      // room" signal (works even with their camera off and before any tile
+      // exists). The local attendee is filtered out by id.
+      try {
+        const localAttendeeId = audioVideo.localAttendeeId();
+        audioVideo.realtimeSubscribeToAttendeeIdPresence(
+          (attendeeId, present) => {
+            if (!attendeeId || attendeeId === localAttendeeId) return;
+            setRemoteConnected(present);
+          },
+        );
+      } catch {
+        /* presence unavailable — the no-show timer just stays off */
+      }
+
       // Remote audio plays through a dedicated hidden audio element. On
       // phone browsers the element must be attached to the DOM, carry
       // playsinline, and be started from a user gesture — otherwise the
@@ -304,12 +351,13 @@ export function useMeeting(consultationId) {
         document.body.appendChild(audioEl);
         remoteAudioElRef.current = audioEl;
         audioVideo.bindAudioElement(audioEl);
-        audioEl.play?.().catch(() => {
-          /* no gesture yet — retried on the next control tap */
-        });
       } catch {
         /* audio falls back to the remote video element if binding fails */
       }
+      // Try to start playback right away — the tap that joined the room
+      // usually counts as a gesture, and delayed retries mop up whatever
+      // the autoplay policy still blocks.
+      playRemoteAudio();
 
       // 3. Heartbeat keeps the session alive server-side.
       heartbeatRef.current = setInterval(() => {
@@ -365,6 +413,7 @@ export function useMeeting(consultationId) {
     remoteTileIdRef.current = null;
     setChatMessages([]);
     setRemoteVideoOn(false);
+    setRemoteConnected(false);
     setPhase("loading");
 
     (async () => {
@@ -407,6 +456,25 @@ export function useMeeting(consultationId) {
   }, [consultationId]);
 
   // ------------------------------------------------------------------
+  // A user gesture unlocks remote-audio playback on restrictive mobile
+  // browsers, so a first tap anywhere on the page re-kicks playback.
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (audioUnlockedRef.current) return;
+      audioUnlockedRef.current = true;
+      const el = remoteAudioElRef.current;
+      el?.play?.().catch(() => {});
+    };
+    window.addEventListener("pointerdown", unlockAudio, { once: false });
+    window.addEventListener("touchstart", unlockAudio, { once: false });
+    window.addEventListener("keydown", unlockAudio, { once: false });
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+  }, []);
+
   // Controls
   // ------------------------------------------------------------------
 
@@ -428,15 +496,15 @@ export function useMeeting(consultationId) {
     }
     // A tap is a user gesture: the one moment mobile autoplay policies allow
     // (re)starting remote audio playback.
-    remoteAudioElRef.current?.play?.().catch(() => {});
-  }, []);
+    playRemoteAudio();
+  }, [playRemoteAudio]);
 
   const toggleCamera = useCallback(async () => {
     const audioVideo = audioVideoRef.current;
     if (!audioVideo) return;
     // A tap is a user gesture: the one moment mobile autoplay policies allow
     // (re)starting remote audio playback.
-    remoteAudioElRef.current?.play?.().catch(() => {});
+    playRemoteAudio();
     if (cameraOn) {
       audioVideo.stopLocalVideoTile();
       await audioVideo.stopVideoInput();
@@ -450,8 +518,7 @@ export function useMeeting(consultationId) {
       } catch {
         setCameraOn(false);
       }
-    }
-  }, [cameraOn]);
+    }    }, [cameraOn, playRemoteAudio]);
 
   const hangUp = useCallback(() => finish(false), [finish]);
 
@@ -464,6 +531,7 @@ export function useMeeting(consultationId) {
     micOn,
     cameraOn,
     remoteVideoOn,
+    remoteConnected,
     toggleMic,
     toggleCamera,
     hangUp,

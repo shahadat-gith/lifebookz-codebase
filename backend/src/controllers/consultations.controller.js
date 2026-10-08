@@ -38,16 +38,20 @@ export async function createRequest(req, res, next) {
 
 /**
  * GET /consultations/mine — the signed-in user's consultations.
+ * Server-side pagination: ?limit=10&page=1 →
+ *   { consultations, total, page, limit, hasMore }
  */
 export async function listMine(req, res, next) {
   try {
-    const consultations = await consultService.listMine({
+    const result = await consultService.listMine({
       userId: req.user?.id,
       role: "user",
       status: req.query.status,
+      limit: req.query.limit,
+      page: req.query.page,
     });
 
-    return res.json({ success: true, data: consultations });
+    return res.json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
@@ -55,16 +59,19 @@ export async function listMine(req, res, next) {
 
 /**
  * GET /consultations/expert — the signed-in expert's consultations.
+ * Same server-side pagination as /mine.
  */
 export async function listForExpert(req, res, next) {
   try {
-    const consultations = await consultService.listMine({
+    const result = await consultService.listMine({
       userId: req.user?.id,
       role: "expert",
       status: req.query.status,
+      limit: req.query.limit,
+      page: req.query.page,
     });
 
-    return res.json({ success: true, data: consultations });
+    return res.json({ success: true, data: result });
   } catch (error) {
     next(error);
   }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { CheckoutShell } from "../components/Logo";
 import { Icon, Paths } from "../components/Icons";
@@ -18,6 +18,7 @@ export default function PaymentPage() {
   const { "for": resource, id: resourceId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
 
   const [phase, setPhase] = useState("loading"); // loading | ready | paying
   const [order, setOrder] = useState(null);
@@ -25,6 +26,12 @@ export default function PaymentPage() {
 
   // Success/failure live on sibling paths of this same checkout URL.
   const basePath = `/pay/${resource}/${resourceId}`;
+
+  // Surface marker set by the mobile app's handoff (?platform=mobile).
+  // Forwarded to the success screen so the session room it opens knows the
+  // user came from the app (return-to-app rating flow).
+  const rawPlatform = (searchParams.get("platform") || "").toLowerCase();
+  const platform = rawPlatform === "mobile" || rawPlatform === "web" ? rawPlatform : "";
 
   const load = useCallback(async () => {
     if (!resource || !resourceId) {
@@ -45,7 +52,7 @@ export default function PaymentPage() {
       if (state.paid) {
         navigate(`${basePath}/success`, {
           replace: true,
-          state: { alreadyPaid: true, redirectUrl: state.redirectUrl },
+          state: { alreadyPaid: true, redirectUrl: withPlatform(state.redirectUrl) },
         });
         return;
       }
@@ -75,11 +82,22 @@ export default function PaymentPage() {
         },
       });
     }
-  }, [resource, resourceId, basePath, navigate]);
+  }, [resource, resourceId, basePath, navigate, platform]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  /**
+   * Attach the platform marker (if any) to the post-payment redirect
+   * target. The backend's redirectUrl points at the session room without
+   * it — only callers who opened checkout with `?platform=` get it forwarded.
+   */
+  function withPlatform(url) {
+    if (!url) return url;
+    if (!platform || url.includes("platform=")) return url;
+    return url.includes("?") ? `${url}&platform=${platform}` : `${url}?platform=${platform}`;
+  }
 
   const handlePay = async () => {
     if (phase === "paying") return;
@@ -103,7 +121,10 @@ export default function PaymentPage() {
         result = await paymentApi.verifyPayment(resource, { resourceId, ...handshake });
       }
 
-      navigate(`${basePath}/success`, { replace: true, state: { redirectUrl: result?.redirectUrl } });
+      navigate(`${basePath}/success`, {
+        replace: true,
+        state: { redirectUrl: withPlatform(result?.redirectUrl) },
+      });
     } catch (err) {
       if (err?.cancelled) {
         setPhase("ready");
