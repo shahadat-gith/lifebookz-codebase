@@ -1,5 +1,5 @@
 import { Icons } from "../../../icons";
-import { getCategoryLabel } from "../../../data/coaches";
+import { getCategoryLabel } from "../../../data/experts";
 import { initials } from "../utils";
 
 /** The expert being booked: who they are, what they do, and what they cost. */

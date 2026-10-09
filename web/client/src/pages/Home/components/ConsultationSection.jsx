@@ -8,7 +8,7 @@ const FEATURES = [
     icon: Icons.academic,
     iconClassName: "text-blue-700 ring-blue-200/80 dark:text-blue-300 dark:ring-blue-400/30",
     title: "Expert guidance",
-    desc: "Coaches across education, career, relationships and more.",
+    desc: "Experts across education, career, relationships and more.",
   },
   {
     icon: Icons.heartSolid,
@@ -73,7 +73,7 @@ export function ConsultationSection() {
               <h2 className="mt-5 font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl lg:text-5xl">
                 Talk to a{" "}
                 <span className="bg-gradient-to-r from-primary via-primary to-accent bg-clip-text text-transparent">
-                  coach
+                  expert
                 </span>
                 .
               </h2>
@@ -110,7 +110,7 @@ export function ConsultationSection() {
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15 transition-colors group-hover:bg-white/25">
                     <Icons.videoCamera className="h-3.5 w-3.5 text-white" />
                   </span>
-                  Talk to a Coach
+                  Talk to an Expert
                 </Link>
 
               
@@ -139,7 +139,7 @@ export function ConsultationSection() {
                       Dr. Sarah Mitchell
                     </p>
                     <p className="text-[10px] text-muted-foreground">
-                      Academic & Study Coach
+                      Academic & Study Expert
                     </p>
                   </div>
                 </div>

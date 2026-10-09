@@ -1,5 +1,5 @@
 import { Icons } from "../../../icons";
-import { getCategoryLabel } from "../../../data/coaches";
+import { getCategoryLabel } from "../../../data/experts";
 
 function getInitials(name) {
   return (name || "")

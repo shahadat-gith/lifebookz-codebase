@@ -97,6 +97,10 @@ export const config = {
     // An IN_PROGRESS session is force-completed when BOTH heartbeats are
     // quiet for this long (participants reconnecting stay unaffected).
     sessionStaleMinutes: parseInt(process.env.CONSULT_SESSION_STALE_MINUTES, 10) || 10,
+    // A PENDING request the expert never confirmed auto-cancels after this
+    // long; clients show their "getting late" nudge at ~2 min against the
+    // same deadline received in each consultation payload.
+    confirmTimeoutMin: parseInt(process.env.CONSULT_CONFIRM_TIMEOUT_MIN, 10) || 5,
   },  frontend: {
     admin: process.env.FRONTEND_ADMIN_URL,
     client: process.env.FRONTEND_CLIENT_URL,

@@ -37,6 +37,10 @@ export function useMeeting(consultationId) {
   const [remoteConnected, setRemoteConnected] = useState(false);
 
   const audioVideoRef = useRef(null);
+  // The DefaultDeviceController created for this session — owns the raw
+  // audio stream, so mic mute can hard-toggle `track.enabled` (the only
+  // reliable way to mute on mobile web).
+  const deviceControllerRef = useRef(null);
   const heartbeatRef = useRef(null);
   const endedRef = useRef(false);
   // React StrictMode mounts effects twice in dev; two concurrent Chime
@@ -56,11 +60,22 @@ export function useMeeting(consultationId) {
   // Whether a user gesture has (or is expected to have) unlocked remote-audio
   // playback on this page — mobile autoplay policies need one.
   const audioUnlockedRef = useRef(false);
+  // Local mic state must be tracked even when the SDK call fails (mobile
+  // browsers occasionally reject mute toggles while the track is being
+  // renegotiated), so the button never lies about what the user wanted.
+  const micMutedRef = useRef(false);
 
   const stopEverything = useCallback(() => {
     if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     heartbeatRef.current = null;
     setRemoteConnected(false);
+    micMutedRef.current = false;
+    try {
+      deviceControllerRef.current?.stop?.();
+    } catch {
+      /* controller already destroyed */
+    }
+    deviceControllerRef.current = null;
 
     try {
       audioVideoRef.current?.stop();
@@ -75,11 +90,17 @@ export function useMeeting(consultationId) {
       /* already gone */
     }
     remoteAudioElRef.current = null;
-  }, []);  /**
+  }, []);
+
+  /**
    * Play the remote-audio element, with a short bounded retry. Phone
    * browsers reject play() before a user gesture has "unlocked" them, but
    * the tap that joined the room usually counts, so a few delayed retries
    * land the sound without needing an explicit control press.
+   *
+   * iOS quirk: Safari sometimes doesn't attach the WebRTC audio track to
+   * the element until play() is already running — pausing + replaying on
+   * the first gesture forces it to pick the track up.
    */
   const playRemoteAudio = useCallback(() => {
     const el = remoteAudioElRef.current;
@@ -89,13 +110,24 @@ export function useMeeting(consultationId) {
       setTimeout(() => {
         const current = remoteAudioElRef.current;
         if (!current) return; // session torn down — stop retrying
+        if (audioUnlockedRef.current && !current.paused && current.readyState > 2) {
+          return; // already playing unmuted audio
+        }
         current.play?.().catch(() => {
           tries += 1;
-          if (tries < 5) attempt(600);
+          if (tries < 6) attempt(500);
         });
       }, delay);
     };
     attempt(0);
+    // iOS first-gesture nudge: reload the element so it binds the track.
+    if (audioUnlockedRef.current) {
+      try {
+        el.load();
+      } catch {
+        /* load() failing is harmless — the attempt above covers playback */
+      }
+    }
   }, []);
 
   const finish = useCallback(
@@ -234,6 +266,9 @@ export function useMeeting(consultationId) {
       // 2. Build the Chime session from the backend's credentials.
       const logger = new ConsoleLogger("LifeBookz", LogLevel.WARN);
       const deviceController = new DefaultDeviceController(logger);
+      // Kept in a ref so toggleMic can hard-gate the raw WebRTC audio
+      // track (`track.enabled`) — the mute that mobile browsers respect.
+      deviceControllerRef.current = deviceController;
       const configuration = new MeetingSessionConfiguration(
         join.meeting,
         join.attendee,
@@ -478,22 +513,58 @@ export function useMeeting(consultationId) {
   // Controls
   // ------------------------------------------------------------------
 
+  /**
+   * Mute / unmute the local mic. Two layers, because mobile browsers are
+   * unreliable with either alone:
+   *   1. the SDK's realtime mute (its canonical state + data-channel
+   *      presence),
+   *   2. the raw WebRTC track's enabled flag (the actual media — some
+   *      Android/iOS browsers ignore the SDK's mute while renegotiating).
+   * Both must agree or the far side hears either silence that won't
+   * un-mute, or audio that won't mute.
+   */
   const toggleMic = useCallback(() => {
     const audioVideo = audioVideoRef.current;
     if (!audioVideo) return;
+
+    const nextMuted = !micMutedRef.current;
+
+    // Layer 1: the SDK's canonical mute. The facade's realtimeMute* only
+    // flips the signaling state; DefaultDeviceController actually gates the
+    // audio stream — and on mobile browsers that's the part that fails, so
+    // we drive BOTH.
     try {
-      if (audioVideo.realtimeIsLocalAudioMuted()) {
+      if (nextMuted) {
+        if (!audioVideo.realtimeIsLocalAudioMuted()) {
+          audioVideo.realtimeMuteLocalAudio();
+        }
+      } else if (audioVideo.realtimeIsLocalAudioMuted()) {
         audioVideo.realtimeUnmuteLocalAudio();
-        setMicOn(true);
-      } else {
-        audioVideo.realtimeMuteLocalAudio();
-        setMicOn(false);
       }
     } catch {
-      // The mic may not be running yet on some phone browsers — optimistically
-      // flip the state so the control keeps responding either way.
-      setMicOn((m) => !m);
+      /* keep going — the optimistic state below keeps the UI truthful */
     }
+
+    // Layer 2: the raw WebRTC track's enabled flag — the actual media. Some
+    // Android/iOS browsers ignore the SDK's mute signaling while the stream
+    // is being renegotiated, so the far side keeps hearing (or never hears)
+    // the mic. Setting `enabled` is the WebRTC-standard hard mute that
+    // always works.
+    try {
+      const stream =
+        deviceControllerRef.current?.intrinsicDeviceAsMediaStream?.();
+      stream
+        ?.getAudioTracks?.()
+        .forEach((track) => {
+          track.enabled = !nextMuted;
+        });
+    } catch {
+      /* intrinsicDeviceAsMediaStream may be absent on some SDK versions */
+    }
+
+    micMutedRef.current = nextMuted;
+    setMicOn(!nextMuted);
+
     // A tap is a user gesture: the one moment mobile autoplay policies allow
     // (re)starting remote audio playback.
     playRemoteAudio();

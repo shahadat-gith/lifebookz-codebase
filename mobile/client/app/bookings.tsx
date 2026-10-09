@@ -137,6 +137,24 @@ export default function BookingsScreen() {
   const upcoming = consultations.filter((c) => UPCOMING.includes(c.status || ""));
   const history = consultations.filter((c) => HISTORY.includes(c.status || ""));
 
+  /**
+   * CONFIRMED card → straight to checkout (same shortcut as the web
+   * client). The backend re-checks payment state at the payment portal,
+   * so a stale CONFIRMED row can only mean "unpaid".
+   */
+  async function handlePay(consultation: Consultation) {
+    const id = (consultation._id || consultation.id) as string;
+    setCheckingId(id);
+    try {
+      await openPayment("consultation", id);
+      await bookings.refetch();
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not open payment. Please try again."));
+    } finally {
+      setCheckingId(null);
+    }
+  }
+
   async function handleJoin(consultation: Consultation) {
     const id = (consultation._id || consultation.id) as string;
     setCheckingId(id);
@@ -237,6 +255,16 @@ export default function BookingsScreen() {
                   theme={theme}
                   cancelling={cancellingId === (c._id || c.id)}
                   joining={checkingId === (c._id || c.id)}
+                  onWait={() =>
+                    router.push({
+                      pathname: "/consult/waiting",
+                      params: {
+                        consultationId: (c._id || c.id) as string,
+                        expertName: c.expert?.fullName || "Your expert",
+                      },
+                    })
+                  }
+                  onPay={() => handlePay(c)}
                   onJoin={() => handleJoin(c)}
                   onCancel={() => handleCancel((c._id || c.id) as string)}
                   onRate={() => router.push({ pathname: "/consult/rate", params: { consultationId: (c._id || c.id) as string } })}
@@ -254,6 +282,16 @@ export default function BookingsScreen() {
                   theme={theme}
                   cancelling={cancellingId === (c._id || c.id)}
                   joining={checkingId === (c._id || c.id)}
+                  onWait={() =>
+                    router.push({
+                      pathname: "/consult/waiting",
+                      params: {
+                        consultationId: (c._id || c.id) as string,
+                        expertName: c.expert?.fullName || "Your expert",
+                      },
+                    })
+                  }
+                  onPay={() => handlePay(c)}
                   onJoin={() => handleJoin(c)}
                   onCancel={() => handleCancel((c._id || c.id) as string)}
                   onRate={() => router.push({ pathname: "/consult/rate", params: { consultationId: (c._id || c.id) as string } })}
@@ -305,6 +343,8 @@ function BookingCard({
   theme,
   cancelling,
   joining,
+  onWait,
+  onPay,
   onJoin,
   onCancel,
   onRate,
@@ -313,12 +353,23 @@ function BookingCard({
   theme: ReturnType<typeof useTheme>;
   cancelling: boolean;
   joining: boolean;
+  onWait: () => void;
+  onPay: () => void;
   onJoin: () => void;
   onCancel: () => void;
   onRate: () => void;
 }) {
   const status = consultation.status || "PENDING";
-  const canJoin = UPCOMING.includes(status);
+  // Status-based primary action, same as the web client:
+  // PENDING → waiting screen, CONFIRMED → pay, IN_PROGRESS → join the room.
+  const canWait = status === "PENDING";
+  // CONFIRMED + unpaid → pay; CONFIRMED + paid (or amount 0) → room open.
+  // `paid` comes from the backend (Payment collection) on every fetch and
+  // via the WS payment push, so a completed checkout flips instantly.
+  const canPay = status === "CONFIRMED" && consultation.paid === false;
+  const canJoin =
+    status === "IN_PROGRESS" ||
+    (status === "CONFIRMED" && consultation.paid !== false);
   const canCancel = ["PENDING", "CONFIRMED"].includes(status);
   const canRate = status === "COMPLETED";
 
@@ -346,9 +397,25 @@ function BookingCard({
       ) : null}
 
       <View style={styles.cardActions}>
+        {canWait && (
+          <Button
+            label="Check status"
+            icon="time"
+            variant="outline"
+            onPress={onWait}
+          />
+        )}
+        {canPay && (
+          <Button
+            label={joining ? "Opening payment…" : "Pay now"}
+            icon="card"
+            onPress={onPay}
+            loading={joining}
+          />
+        )}
         {canJoin && (
           <Button
-            label={joining ? "Checking…" : "Join session"}
+            label={joining ? "Checking…" : "Rejoin session"}
             icon="videocam"
             onPress={onJoin}
             loading={joining}

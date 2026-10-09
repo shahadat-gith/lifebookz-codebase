@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 
 import api from "../../config/api";
@@ -14,7 +14,6 @@ import { readConsultContext } from "./utils";
 
 import ExpertSidebar from "./components/ExpertSidebar";
 import BookingForm from "./components/BookingForm";
-import RequestSuccess from "./components/RequestSuccess";
 
 /**
  * Book a session with one expert — simplified flow.
@@ -28,6 +27,7 @@ import RequestSuccess from "./components/RequestSuccess";
 export default function BookExpert() {
   const { expertId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   // Context carried over from the consult matching form.
@@ -42,10 +42,8 @@ export default function BookExpert() {
 
   const [problem, setProblem] = useState(context.problem || "");
   const [category, setCategory] = useState(context.category || "");
-  const [notes, setNotes] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
-  const [created, setCreated] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -93,11 +91,17 @@ export default function BookExpert() {
         expertId: expert.id || expert._id,
         problem: problem.trim(),
         category,
-        notes: notes.trim(),
       });
 
-      setCreated(consultation);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      // Same journey as the mobile app: straight to the live waiting
+      // screen, which flips to a Pay step the moment the expert confirms.
+      navigate(`/consult/waiting/${consultation.id || consultation._id}`, {
+        replace: true,
+        state: {
+          expertName: expert.fullName,
+          expertAvatar: expert.avatar?.url,
+        },
+      });
     } catch (err) {
       toast.error(
         err.response?.data?.error?.message ||
@@ -142,10 +146,6 @@ export default function BookExpert() {
     );
   }
 
-  if (created) {
-    return <RequestSuccess consultation={created} expert={expert} />;
-  }
-
   return (
     <div className="min-h-screen bg-background px-4 py-10 font-sans text-foreground selection:bg-accent/20 md:py-16">
       <div className="mx-auto max-w-5xl space-y-8">
@@ -166,8 +166,6 @@ export default function BookExpert() {
             onProblemChange={setProblem}
             category={category}
             onCategoryChange={setCategory}
-            notes={notes}
-            onNotesChange={setNotes}
             submitting={submitting}
             onSubmit={handleRequest}
           />

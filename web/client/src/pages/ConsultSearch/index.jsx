@@ -102,17 +102,26 @@ export default function ConsultSearchPage() {
     setBookingId(expertId);
 
     try {
-      await consultApi.createRequest({
+      const consultation = await consultApi.createRequest({
         expertId,
         problem: buildProblem(problem, details),
         category,
         notes: details.trim(),
       });
 
+      const consultationId = consultation._id || consultation.id;
       toast.success(
-        `Request sent to ${expert.fullName}. You'll get an email as soon as it's confirmed.`,
+        "Request sent — we'll tell you the moment it's confirmed.",
       );
-      navigate("/bookings");
+      // Same journey as the mobile app: straight to the live waiting page,
+      // which flips to a Pay step when the expert confirms over the socket.
+      navigate(`/consult/waiting/${consultationId}`, {
+        replace: true,
+        state: {
+          expertName: expert.fullName || "Your expert",
+          expertAvatar: expert.avatar?.url,
+        },
+      });
     } catch (err) {
       toast.error(
         apiErrorMessage(err, "Could not send your request. Please try again."),

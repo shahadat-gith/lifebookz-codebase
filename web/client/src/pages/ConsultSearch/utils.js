@@ -1,11 +1,11 @@
-import { coachCategories } from "../../data/coaches";
+import { expertCategories } from "../../data/experts";
 
 /** How much of a description the matcher needs to work with. */
 export const MIN_PROBLEM_LENGTH = 10;
 
 /** The categories a consult can be matched against, as select options. */
 export function categoryOptions() {
-  return coachCategories.map((category) => ({
+  return expertCategories.map((category) => ({
     value: category.id,
     label: category.label,
   }));

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import Logo from "../components/Logo";
@@ -10,8 +10,6 @@ import { Paths } from "../components/Icons";
 import { useMeeting } from "../hooks/useMeeting";
 import * as consultationsApi from "../api/consultations";
 
-/** Grace window before an absent expert's booking is cancelled. */
-const NO_SHOW_GRACE_MS = 5 * 60 * 1000;
 
 /**
  * The live meeting room — the one page both clients and experts share.
@@ -51,16 +49,6 @@ export default function MeetingPage() {
   const [chatOpen, setChatOpen] = useState(false);
   const [seenCount, setSeenCount] = useState(0);
 
-  // ------------------------------------------------------------------
-  // No-show protection (client side only)
-  // ------------------------------------------------------------------
-  // Industry-standard grace window: if the expert hasn't actually entered
-  // the room within 5 minutes of the client being live, the booking is
-  // cancelled automatically and the client is apologised to + redirected
-  // to book a new expert.
-  const [noShowLeft, setNoShowLeft] = useState(null); // seconds remaining
-  const [noShow, setNoShow] = useState(false); // apology screen
-
   // Unread badge: anything that arrived while the panel was closed.
   useEffect(() => {
     if (chatOpen) setSeenCount(meeting.chatMessages.length);
@@ -68,50 +56,6 @@ export default function MeetingPage() {
 
   const unread = Math.max(0, meeting.chatMessages.length - seenCount);
   const isExpert = meeting.side === "expert";
-
-  const noShowDeadlineRef = useRef(null);
-  useEffect(() => {
-    if (isExpert || meeting.phase !== "live" || meeting.remoteConnected) {
-      noShowDeadlineRef.current = null;
-      setNoShowLeft(null);
-      return undefined;
-    }
-    if (noShowDeadlineRef.current) return undefined; // timer already running
-    noShowDeadlineRef.current = Date.now() + NO_SHOW_GRACE_MS;
-    setNoShowLeft(Math.round(NO_SHOW_GRACE_MS / 1000));
-    const timer = setInterval(() => {
-      const left = Math.max(
-        0,
-        Math.round((noShowDeadlineRef.current - Date.now()) / 1000),
-      );
-      setNoShowLeft(left);
-      if (left <= 0) clearInterval(timer);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isExpert, meeting.phase, meeting.remoteConnected]);
-
-  // Grace window expired without the expert → cancel + apologise.
-  useEffect(() => {
-    if (noShowLeft !== 0 || isExpert || meeting.remoteConnected || noShow) return;
-    let cancelled = false;
-    (async () => {
-      setNoShowCancelling(true);
-      try {
-        await consultationsApi.cancelConsultation(consultationId, "Expert no-show");
-      } catch {
-        /* the apology screen shows either way */
-      }
-      if (!cancelled) {
-        setNoShow(true);
-        // Tear the room down (stops mic/camera + heartbeat); the apology
-        // screen above takes precedence over the plain ended screen.
-        meeting.hangUp();
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [noShowLeft, isExpert, meeting.remoteConnected, noShow, consultationId]);
 
   // ------------------------------------------------------------------
   // Exit routing
@@ -167,45 +111,6 @@ export default function MeetingPage() {
   // ------------------------------------------------------------------
   // Phase screens
   // ------------------------------------------------------------------
-
-  // Expert never showed up — the booking was cancelled automatically.
-  if (noShow) {
-    const clientBase = (import.meta.env.VITE_CLIENT_URL || "").replace(/\/$/, "");
-    return (
-      <PhaseMessage
-        icon={<Icon path={Paths.clock} className="h-8 w-8" />}
-        title="We're really sorry"
-        action={
-          isMobileApp
-            ? { href: "lifebookz://bookings", label: "Back to the app" }
-            : undefined
-        }
-      >
-        <p>
-          Your expert didn't join within 5 minutes, so this session was
-          cancelled automatically — you won't be charged for it.
-        </p>
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-          {clientBase && (
-            <a
-              href={`${clientBase}/consult`}
-              className="inline-flex items-center rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
-            >
-              Book a new session
-            </a>
-          )}
-          {clientBase && (
-            <a
-              href={`${clientBase}/bookings`}
-              className="inline-flex items-center rounded-full border border-border px-5 py-2.5 text-sm font-bold text-foreground transition-colors hover:bg-muted"
-            >
-              Back to My Bookings
-            </a>
-          )}
-        </div>
-      </PhaseMessage>
-    );
-  }
 
   if (meeting.phase === "loading") {
     return (
@@ -286,7 +191,7 @@ export default function MeetingPage() {
         <Logo />
       </header>
 
-      <main className="mx-auto w-full max-w-5xl px-4 py-6 md:py-10">
+      <main className="mx-auto w-full max-w-5xl px-4 py-3 md:py-10">
         <VideoStage
           bindLocalVideo={meeting.bindLocalVideo}
           bindRemoteVideo={meeting.bindRemoteVideo}
@@ -301,16 +206,6 @@ export default function MeetingPage() {
               : "Waiting for your expert to connect…"
           }
         />
-
-        {/* No-show countdown — visible to the client while they wait alone */}
-        {!isExpert && noShowLeft != null && (
-          <p className="mt-3 flex items-center justify-center gap-2 text-center text-xs font-semibold text-amber-600 dark:text-amber-400">
-            <Icon path={Paths.clock} className="h-4 w-4" />
-            {noShowLeft > 0
-              ? `Your expert hasn't joined yet — this session will be cancelled in ${Math.floor(noShowLeft / 60)}:${String(noShowLeft % 60).padStart(2, "0")}`
-              : "Cancelling this session…"}
-          </p>
-        )}
 
         <ControlBar
           micOn={meeting.micOn}

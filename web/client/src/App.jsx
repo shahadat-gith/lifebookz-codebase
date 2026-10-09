@@ -23,6 +23,8 @@ import ContentPolicy from "./pages/ContentPolicy";
 import BookExpert from "./pages/BookExpert";
 import ConsultSearch from "./pages/ConsultSearch";
 import Consultation from "./pages/Consultation";
+import ConsultWaiting from "./pages/ConsultWaiting";
+import ConsultRate from "./pages/ConsultRate";
 import MyBookings from "./pages/MyBookings";
 import {
   ConsultationRedirect,
@@ -52,6 +54,11 @@ export default function App() {
             <Route path="/consult" element={<Consultation />} />
             <Route path="/consult/book" element={<ConsultSearch />} />
             <Route path="/consult/book/:expertId" element={<BookExpert />} />
+            {/* Live-session flow, mirroring the mobile app: the waiting
+                screen flips to a Pay step on live confirmation, and the
+                rating page opens the moment the session completes. */}
+            <Route path="/consult/waiting/:consultationId" element={<ProtectedRoute><ConsultWaiting /></ProtectedRoute>} />
+            <Route path="/consult/rate/:consultationId" element={<ProtectedRoute><ConsultRate /></ProtectedRoute>} />
             {/* Live sessions and checkout moved to their own portals —
                 these routes only hand the session off and redirect. */}
             <Route path="/consult/:consultationId/pay" element={<ProtectedRoute><PaymentRedirect /></ProtectedRoute>} />

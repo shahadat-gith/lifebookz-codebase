@@ -145,6 +145,12 @@ export interface Consultation {
   expert?: Expert;
   user?: User;
   amount?: number;
+  // Paid state resolved server-side from the Payment collection (also
+  // pushed live over the WebSocket) — drives Join vs Pay on the cards.
+  paid?: boolean;
+  // Server deadline (createdAt + confirm timeout) the waiting screen's
+  // nudge/expiry clocks run against — survives navigation.
+  confirmDeadline?: string | null;
   rating?: { score?: number; review?: string };
 }
 

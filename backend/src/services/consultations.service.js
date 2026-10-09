@@ -6,6 +6,7 @@ import Consultation from "../models/Consultation.js";
 import User from "../models/User.js";
 import Author from "../models/Author.js";
 import HandoffTicket from "../models/HandoffTicket.js";
+import Payment from "../models/Payment.js";
 import { generateToken } from "../utils/helpers.js";
 import { CONSULT_CATEGORY_IDS } from "../constants/expert.constants.js";
 import config from "../config/index.js";
@@ -200,6 +201,46 @@ export async function expireStaleConsultations() {
   const now = new Date();
   const staleSessionMs = config.consult.sessionStaleMinutes * 60 * 1000;
 
+  // Requests the expert never confirmed within the confirm-timeout window
+  // (5 min by default) — cancel them so the user isn't left hanging. This
+  // is server-side and timer-independent of any client screen: closing the
+  // app, clicking back, or losing the socket never affects the deadline.
+  const confirmDeadline = new Date(
+    now.getTime() - config.consult.confirmTimeoutMin * 60 * 1000,
+  );
+  const unconfirmed = await Consultation.find({
+    status: "PENDING",
+    createdAt: { $lt: confirmDeadline },
+  })
+    .select("_id expert user")
+    .lean();
+
+  let autoCancelled = 0;
+  for (const doc of unconfirmed) {
+    const cancelled = await Consultation.findOneAndUpdate(
+      { _id: doc._id, status: "PENDING" },
+      {
+        $set: {
+          status: "CANCELLED",
+          cancelledBy: "system",
+          cancelReason: "Expert did not confirm the session in time.",
+        },
+      },
+      { new: true },
+    );
+    if (!cancelled) continue;
+    autoCancelled += 1;
+
+    // Fire-and-forget: the user's bookings/waiting screens learn the
+    // booking was cancelled the moment the sweep lands it.
+    publishToConsultation(String(doc._id), {
+      event: "consultation.cancelled",
+      consultationId: String(doc._id),
+      consultation: { _id: String(doc._id), status: "CANCELLED" },
+      reason: "Expert did not confirm the session in time.",
+    }).catch(() => {});
+  }
+
   // Requests that no expert accepted in time.
   const expiredRequests = await Consultation.updateMany(
     { status: "PENDING", requestExpiresAt: { $lt: now } },
@@ -230,10 +271,11 @@ export async function expireStaleConsultations() {
     abandoned += 1;
   }
 
-  if (expiredRequests.modifiedCount || abandoned) {
+  if (expiredRequests.modifiedCount || abandoned || autoCancelled) {
     logger.info("Consultation sweep", {
       expiredRequests: expiredRequests.modifiedCount,
       abandoned,
+      autoCancelled,
     });
   }
 }
@@ -388,8 +430,42 @@ export async function listMine({ userId, role = "user", status, limit, page }) {
     Consultation.countDocuments(filter),
   ]);
 
+  // The booking card needs to know paid vs unpaid to show "Join now" vs
+  // "Pay now" (the lifecycle status alone can't tell — CONFIRMED covers
+  // both). Payment docs live in their own collection (except legacy docs
+  // with the embedded subdoc), so resolve them in one query for the page.
+  const paymentConsultationIds = consultations
+    .filter((c) => !(c.payment?.paid || c.payment?.status === "paid") && c.amount !== 0)
+    .map((c) => c._id);
+
+  const paidIds = new Set(
+    paymentConsultationIds.length
+      ? (
+          await Payment.find({
+            consultation: { $in: paymentConsultationIds },
+            status: "paid",
+          }).select("consultation").lean()
+        ).map((p) => String(p.consultation))
+      : [],
+  );
+  const confirmTimeoutMs = config.consult.confirmTimeoutMin * 60 * 1000;
+  const withPaid = consultations.map((c) => ({
+    ...c,
+    paid:
+      Boolean(c.payment?.paid) ||
+      c.payment?.status === "paid" ||
+      c.amount === 0 ||
+      paidIds.has(String(c._id)),
+    // Server deadline the client clocks run against — client timers are
+    // presentation only and can never end a booking on their own.
+    confirmDeadline:
+      c.status === "PENDING" && c.createdAt
+        ? new Date(new Date(c.createdAt).getTime() + confirmTimeoutMs).toISOString()
+        : null,
+  }));
+
   return {
-    consultations,
+    consultations: withPaid,
     total,
     page: pg,
     limit: lim,
@@ -410,7 +486,31 @@ export async function getForParticipant({ id, role, userId }) {
     .lean();
 
   if (!consultation) throw notFoundError("Consultation not found.");
-  return consultation;
+
+  // `paid` powers the card's Join vs Pay decision (and the waiting
+  // screen's post-confirmation hop) — resolve the Payment collection
+  // lookup exactly like listMine does.
+  const paid =
+    Boolean(consultation.payment?.paid) ||
+    consultation.payment?.status === "paid" ||
+    consultation.amount === 0 ||
+    Boolean(
+      await Payment.findOne({
+        consultation: consultation._id,
+        status: "paid",
+      }).select("_id").lean(),
+    );
+  const confirmTimeoutMs = config.consult.confirmTimeoutMin * 60 * 1000;
+  return {
+    ...consultation,
+    paid,
+    confirmDeadline:
+      consultation.status === "PENDING" && consultation.createdAt
+        ? new Date(
+            new Date(consultation.createdAt).getTime() + confirmTimeoutMs,
+          ).toISOString()
+        : null,
+  };
 }
 
 // ---------------------------------------------------------------------------

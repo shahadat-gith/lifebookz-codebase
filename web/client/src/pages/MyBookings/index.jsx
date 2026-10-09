@@ -1,29 +1,61 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
 import { useAuth } from "../../context/AuthContext";
 import { Icons } from "../../icons";
-import LoadingScreen from "../../components/common/LoadingScreen";
+import { getCategoryLabel } from "../../data/experts";
 import SignInPrompt from "../../components/common/SignInPrompt";
 import ErrorState from "../../components/common/ErrorState";
 import EmptyState from "../../components/common/EmptyState";
+import LoadingScreen from "../../components/common/LoadingScreen";
 
 import * as consultApi from "../../api/consultation";
+import { eventConsultationId, getSharedSocket } from "../../api/realtime";
 import { openPayment, openConsultation } from "../../utils/handoff";
 
 import BookingCard from "./components/BookingCard";
-import RatingDialog from "./components/RatingDialog";
 
 /**
- * The reader's consultations — one card per session with the action that
- * matches its state: join the room (payment happens at its door), rate when
- * completed, cancel while still open.
+ * The reader's consultations — same structure as the mobile app's bookings
+ * screen: an "Upcoming sessions (n)" and a "History (n)" section, one card
+ * per session with the action that matches its state (join, rate, cancel),
+ * live WebSocket updates, and a "Show more" pager.
  */
 const PAGE_SIZE = 10; // shown per "Show more" click, mirroring the expert dashboard
 
+/** Statuses that still benefit from live WebSocket updates. */
+const UPCOMING = ["PENDING", "CONFIRMED", "IN_PROGRESS"];
+const HISTORY = ["COMPLETED", "CANCELLED", "EXPIRED"];
+
+/** Section title + count badge, exactly as the mobile app renders it. */
+function Section({ title, count, muted, children }) {
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center gap-2.5">
+        <h2
+          className={`text-[15px] font-extrabold uppercase tracking-[0.03em] ${
+            muted ? "text-muted-foreground" : "text-foreground"
+          }`}
+        >
+          {title}
+        </h2>
+        <span
+          className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+            muted ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"
+          }`}
+        >
+          {count}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>
+    </section>
+  );
+}
+
 export default function MyBookings() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const navigate = useNavigate();
 
   const [consultations, setConsultations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +63,6 @@ export default function MyBookings() {
   const [confirmingId, setConfirmingId] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
   const [checkingId, setCheckingId] = useState(null);
-  const [ratingTarget, setRatingTarget] = useState(null);
 
   // --- Limited fetching: 10 now, "Show more" appends the next 10 ----------
   const [page, setPage] = useState(1);
@@ -96,6 +127,87 @@ export default function MyBookings() {
   }, [allFetched, loadingMore, page, consultations]);
 
   /**
+   * Live session updates — the same WebSocket the waiting screen uses.
+   * The socket is a signal, the API is the truth: frames update the cards
+   * in place, and `consultation.completed` (session ended) lands the user
+   * straight on the rating page, mirroring the mobile app's bookings
+   * listener. Falls back gracefully when VITE_WS_URL isn't set.
+   */
+  const refreshSilently = useCallback(async () => {
+    try {
+      const next = await consultApi.listMine({ limit: PAGE_SIZE, page: 1 });
+      setConsultations((prev) => {
+        const byId = new Map(prev.map((c) => [c._id || c.id, c]));
+        (next || []).forEach((c) =>
+          byId.set(c._id || c.id, { ...byId.get(c._id || c.id), ...c }),
+        );
+        return Array.from(byId.values());
+      });
+    } catch {
+      /* the next poll or manual refresh will catch up */
+    }
+  }, []);
+
+  const upcoming = useMemo(
+    () => consultations.filter((c) => UPCOMING.includes(c.status)),
+    [consultations],
+  );
+  const history = useMemo(
+    () => consultations.filter((c) => HISTORY.includes(c.status)),
+    [consultations],
+  );
+
+  const consultationKey = useMemo(
+    () => upcoming.map((c) => c._id || c.id).join(","),
+    [upcoming],
+  );
+
+  useEffect(() => {
+    if (!isAuthenticated || !consultationKey) return undefined;
+    const socket = getSharedSocket();
+    if (!socket) return undefined;
+    socket.connect();
+
+    const ids = consultationKey.split(",").filter(Boolean);
+    ids.forEach((id) => socket.subscribe(id));
+
+    const off = socket.on((event) => {
+      const cid = eventConsultationId(event);
+      if (!cid || !ids.includes(cid)) return;
+
+      const status = event.consultation?.status;
+      const paid = event.consultation?.paid;
+      if (status || paid !== undefined) {
+        setConsultations((prev) =>
+          prev.map((c) =>
+            (c._id || c.id) === cid
+              ? {
+                  ...c,
+                  ...(status ? { status } : {}),
+                  ...(paid !== undefined ? { paid } : {}),
+                }
+              : c,
+          ),
+        );
+      } else {
+        refreshSilently();
+      }
+
+      if (status === "COMPLETED" || event.event === "consultation.completed") {
+        toast.success("Session ended — rate your expert!");
+        navigate(`/consult/rate/${cid}`);
+      }
+    });
+
+    return () => {
+      ids.forEach((id) => socket.unsubscribe(id));
+      off();
+    };
+    // consultationKey keeps this from re-running on every render — it only
+    // changes when the actual set of upcoming consultations changes.
+  }, [isAuthenticated, consultationKey, refreshSilently, navigate]);
+
+  /**
    * Join a session — the full journey runs through the dedicated portals.
    *
    * The card list can't know the real paid state (a verified Razorpay
@@ -104,6 +216,9 @@ export default function MyBookings() {
    * paid / free → straight into the room on session.lifebookz.com. The
    * backend re-authorizes everything at the far end — nothing here is
    * trusted.
+   *
+   * Same fallback as the mobile app: after the room tab opens, re-check the
+   * record — if the meeting ended while it was open, go straight to rating.
    */
   const handleJoin = async (consultation) => {
     const id = consultation._id || consultation.id;
@@ -116,6 +231,17 @@ export default function MyBookings() {
         await openPayment("consultation", id);
       } else {
         await openConsultation(id);
+        try {
+          const fresh = await consultApi.getConsultation(id);
+          if ((fresh?.status || "") === "COMPLETED") {
+            await refreshSilently();
+            if (!fresh.rating?.score) {
+              navigate(`/consult/rate/${id}`);
+            }
+          }
+        } catch {
+          /* the list already refetched — nothing more to do */
+        }
       }
     } catch (err) {
       toast.error(
@@ -128,10 +254,41 @@ export default function MyBookings() {
     }
   };
 
-  const handleRate = async (consultation, score, review) => {
+  /**
+   * PENDING card → back to the live waiting screen. There the 2-min
+   * nudge / 5-min auto-cancel flow keeps running as if the user never
+   * left; the WS event flips it to Pay when the expert confirms.
+   */
+  const handleWait = (consultation) => {
     const id = consultation._id || consultation.id;
-    await consultApi.rate(id, score, review);
-    await loadConsultations();
+    navigate(`/consult/waiting/${id}`, {
+      state: {
+        expertName: consultation.expert?.fullName || "your expert",
+        expertAvatar: consultation.expert?.avatar?.url,
+      },
+    });
+  };
+
+  /**
+   * CONFIRMED card → straight to checkout. The backend re-checks payment
+   * state at the payment portal, so no pre-flight getSession round-trip is
+   * needed here — a stale CONFIRMED row can only mean "unpaid".
+   */
+  const handlePay = async (consultation) => {
+    const id = consultation._id || consultation.id;
+    setCheckingId(id);
+    try {
+      await openPayment("consultation", id);
+      await refreshSilently();
+    } catch (err) {
+      toast.error(
+        err.response?.data?.error?.message ||
+          err.message ||
+          "Could not open payment. Please try again.",
+      );
+    } finally {
+      setCheckingId(null);
+    }
   };
 
   const handleCancel = async (consultationId) => {
@@ -156,13 +313,18 @@ export default function MyBookings() {
     }
   };
 
-  // Upcoming (actionable) vs history (finished) — never mixed in one list.
-  const upcoming = consultations.filter((c) =>
-    ["PENDING", "CONFIRMED", "IN_PROGRESS"].includes(c.status),
-  );
-  const history = consultations.filter((c) =>
-    ["COMPLETED", "CANCELLED", "EXPIRED"].includes(c.status),
-  );
+  if (authLoading || (isAuthenticated && loading)) {
+    return <LoadingScreen message="Loading your sessions…" />;
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <SignInPrompt
+        title="Sign in to see your sessions"
+        description="Your consultation sessions are tied to your account. Log in to view and manage them."
+      />
+    );
+  }
 
   const renderCard = (consultation) => {
     const id = consultation._id || consultation.id;
@@ -177,38 +339,23 @@ export default function MyBookings() {
         onConfirm={() => setConfirmingId(id)}
         onDismissConfirm={() => setConfirmingId(null)}
         onCancel={() => handleCancel(id)}
+        onWait={() => handleWait(consultation)}
+        onPay={() => handlePay(consultation)}
         onJoin={() => handleJoin(consultation)}
-        onRate={() => setRatingTarget(consultation)}
+        onRate={() => navigate(`/consult/rate/${id}`)}
       />
     );
   };
 
-  if (authLoading || (isAuthenticated && loading)) {
-    return <LoadingScreen message="Loading your sessions…" />;
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <SignInPrompt
-        title="Sign in to see your sessions"
-        description="Your consultation sessions are tied to your account. Log in to view and manage them."
-      />
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background px-4 py-10 font-sans text-foreground selection:bg-accent/20 md:py-16">
       <div className="mx-auto max-w-4xl space-y-8">
-        <header className="space-y-3 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground sm:text-sm">
-            Your Sessions
-          </p>
+        <header className="space-y-1.5">
           <h1 className="font-display text-3xl font-extrabold tracking-tight text-foreground md:text-4xl">
-            My Bookings
+            My bookings
           </h1>
-          <p className="mx-auto max-w-2xl text-sm text-muted-foreground md:text-base">
-            Track your consultation requests — once the expert confirms,
-            complete the payment, join the session, and rate it afterwards.
+          <p className="text-sm text-muted-foreground">
+            Your all bookings appear here.
           </p>
         </header>
 
@@ -221,7 +368,7 @@ export default function MyBookings() {
         ) : consultations.length === 0 ? (
           <EmptyState
             variant="panel"
-            icon={Icons.book}
+            icon={Icons.calendar}
             title="No sessions yet"
             description="Find an expert who understands your situation and request your first session."
             action={{
@@ -233,31 +380,15 @@ export default function MyBookings() {
         ) : (
           <div className="space-y-10">
             {upcoming.length > 0 && (
-              <section className="space-y-4">
-                <div className="flex items-center gap-2.5">
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">
-                    Upcoming sessions
-                  </h2>
-                  <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
-                    {upcoming.length}
-                  </span>
-                </div>
+              <Section title="Upcoming sessions" count={upcoming.length}>
                 {upcoming.map(renderCard)}
-              </section>
+              </Section>
             )}
 
             {history.length > 0 && (
-              <section className="space-y-4">
-                <div className="flex items-center gap-2.5">
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-                    History
-                  </h2>
-                  <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-bold text-muted-foreground">
-                    {history.length}
-                  </span>
-                </div>
+              <Section title="History" count={history.length} muted>
                 {history.map(renderCard)}
-              </section>
+              </Section>
             )}
           </div>
         )}
@@ -287,14 +418,6 @@ export default function MyBookings() {
           </div>
         )}
       </div>
-
-      {ratingTarget && (
-        <RatingDialog
-          consultation={ratingTarget}
-          onClose={() => setRatingTarget(null)}
-          onSubmit={handleRate}
-        />
-      )}
     </div>
   );
 }

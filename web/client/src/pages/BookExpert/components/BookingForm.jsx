@@ -1,7 +1,7 @@
 import { Icons } from "../../../icons";
 import Button from "../../../components/ui/Button";
 import Field, { fieldControlClass } from "../../../components/ui/Field";
-import { coachCategories } from "../../../data/coaches";
+import { expertCategories } from "../../../data/experts";
 import { priceLabel } from "../utils";
 
 /**
@@ -15,8 +15,6 @@ export default function BookingForm({
   onProblemChange,
   category,
   onCategoryChange,
-  notes,
-  onNotesChange,
   submitting,
   onSubmit,
 }) {
@@ -56,28 +54,12 @@ export default function BookingForm({
           className={fieldControlClass}
         >
           <option value="">Select a category…</option>
-          {coachCategories.map((cat) => (
+          {expertCategories.map((cat) => (
             <option key={cat.id} value={cat.id}>
               {cat.label}
             </option>
           ))}
         </select>
-      </Field>
-
-      <Field
-        label="Additional notes"
-        htmlFor="booking-notes"
-        hint="(optional)"
-        className="mt-6"
-      >
-        <textarea
-          id="booking-notes"
-          rows={3}
-          value={notes}
-          onChange={(e) => onNotesChange(e.target.value)}
-          placeholder="Add anything else the expert should know"
-          className={fieldControlClass}
-        />
       </Field>
 
       <div className="mt-8 flex flex-col items-center justify-between gap-4 border-t border-border/60 pt-6 sm:flex-row">

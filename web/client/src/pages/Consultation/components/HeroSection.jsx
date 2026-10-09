@@ -12,7 +12,7 @@ export function HeroSection() {
             Talk To A
           </p>
           <h1 className="font-display text-6xl font-black tracking-tight text-primary sm:text-7xl lg:text-8xl dark:text-foreground">
-            Coach<span className="text-accent">.</span>
+            Expert<span className="text-accent">.</span>
           </h1>
         </div>
 
@@ -72,7 +72,7 @@ export function HeroSection() {
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
               <Icons.sparkles className="h-3.5 w-3.5" />
             </span>
-            <span className="whitespace-nowrap">Verified Coaches</span>
+            <span className="whitespace-nowrap">Verified Experts</span>
           </div>
         </div>
 

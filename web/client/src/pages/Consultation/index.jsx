@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { coachCategories } from "../../data/coaches";
+import { expertCategories } from "../../data/experts";
 import { HeroSection } from "./components/HeroSection";
 import { CategoryGrid } from "./components/CategoryGrid";
 import BookSessionCallout from "./components/BookSessionCallout";
@@ -19,7 +19,7 @@ export default function Consultation() {
 
         {/* Picks the focus area for the consult form */}
         <CategoryGrid
-          categories={coachCategories}
+          categories={expertCategories}
           onSelectCategory={handleCategorySelect}
         />
 

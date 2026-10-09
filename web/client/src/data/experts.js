@@ -1,8 +1,9 @@
-// Consult categories used across the consultation pages, and the dummy
-// availability slots used by the booking form. Expert data itself now comes
-// from the backend (`GET /experts/:id`, `POST /consult/match`).
+// Consult categories used across the consultation pages (same six ids and
+// labels as the mobile app's utils/consult.ts), and the dummy availability
+// slots used by the booking form. Expert data itself comes from the backend
+// (`GET /experts/:id`, `POST /consult/match`).
 
-export const coachCategories = [
+export const expertCategories = [
   { id: "education", label: "Education", icon: "academic" },
   { id: "relationship", label: "Relationship", icon: "heart" },
   { id: "career", label: "Career & Job", icon: "briefcase" },
@@ -13,7 +14,7 @@ export const coachCategories = [
 
 export function getCategoryLabel(categoryId) {
   return (
-    coachCategories.find((c) => c.id === categoryId)?.label ||
+    expertCategories.find((c) => c.id === categoryId)?.label ||
     categoryId ||
     ""
   );

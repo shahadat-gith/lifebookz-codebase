@@ -2,6 +2,7 @@ import Razorpay from "razorpay";
 import config from "../config/index.js";
 import { logger } from "./logger.service.js";
 
+import { publishToConsultation } from "./realtime.service.js";
 import {
   verifyPaymentSignature,
   verifyWebhookSignature,
@@ -127,6 +128,14 @@ export async function verifyPaymentForConsultation({
     throw validationError("This payment could not be verified. Please try again.");
   }
 
+  // Live ping: the booking list and any waiting screen flip from "Pay now"
+  // to "Join now" the second the payment lands — no refresh needed.
+  publishToConsultation(consultationId, {
+    event: "consultation.updated",
+    consultationId,
+    consultation: { _id: consultationId, status: null, paid: true },
+  }).catch(() => {});
+
   return updated;
 }
 
@@ -207,6 +216,12 @@ export async function handleWebhook({ rawBody, signature }) {
         },
       },
     );
+    // Live ping on the webhook path too (covers a dropped checkout tab).
+    publishToConsultation(String(payment.consultation), {
+      event: "consultation.updated",
+      consultationId: String(payment.consultation),
+      consultation: { _id: String(payment.consultation), status: null, paid: true },
+    }).catch(() => {});
     return { handled: true, action: "markPaid" };
   }
 

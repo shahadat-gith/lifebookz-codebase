@@ -60,7 +60,7 @@ export function CategoryGrid({ categories, onSelectCategory }) {
           Life's big questions. Expert advice.
         </h2>
         <p className="text-sm text-muted-foreground md:text-base">
-          Connect with a coach who understands your journey.
+          Connect with an expert who understands your journey.
         </p>
       </div>
 

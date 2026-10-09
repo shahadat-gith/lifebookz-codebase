@@ -63,10 +63,11 @@ export function initials(name) {
     .toUpperCase();
 }
 
-/** "Mar 3" — when the request was made. */
-export function formatBookedDate(value) {
+/** "Mar 3" — when the request was made. Same format as mobile's formatDate. */
+export function formatDate(value) {
   if (!value) return "";
   return new Date(value).toLocaleDateString(undefined, {
+    year: "numeric",
     month: "short",
     day: "numeric",
   });
