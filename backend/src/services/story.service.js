@@ -4,6 +4,7 @@ import Comment from "../models/Comment.js";
 import Author from "../models/Author.js";
 
 import { uploadStoryImage } from "./upload.service.js";
+import { deleteObject } from "../config/r2.js";
 import { sanitizeHtml } from "../utils/sanitizeHtml.js";
 import {
   forbiddenError,
@@ -103,6 +104,44 @@ export function sanitizeMediaList(media) {
     }));
 }
 
+/** Normalized R2 references behind one media list (key when known, else url). */
+function mediaRefs(list = []) {
+  return (list || [])
+    .filter((m) => m && (m.key || m.url))
+    .map((m) => ({ key: m.key || "", url: m.url || "" }));
+}
+
+/** Every media reference a set of chapters still points at. */
+function collectMediaRefs(chapters = []) {
+  return (chapters || []).flatMap((chapter) =>
+    (chapter.stories || []).flatMap((entry) => mediaRefs(entry.media)),
+  );
+}
+
+/** True when a previous media reference is still part of a list. */
+function stillReferenced(ref, refs) {
+  return refs.some(
+    (r) => (ref.key && r.key === ref.key) || (ref.url && r.url === ref.url),
+  );
+}
+
+/**
+ * Deletes the R2 objects behind media descriptors that were dropped by an
+ * update. Best-effort — they are only leftovers (keys are server-minted and
+ * unique to the upload that created them), so a storage hiccup must never
+ * fail the author's save.
+ */
+async function releaseMedia(refs = []) {
+  const dropped = refs.filter((r) => r.key || r.url);
+  if (dropped.length === 0) return;
+
+  await Promise.allSettled(
+    dropped.map((ref) =>
+      deleteObject({ key: ref.key || undefined, url: ref.url || undefined }),
+    ),
+  );
+}
+
 /**
  * Normalize one story entry. Everything a chapter holds is written here:
  * the text, the media and who may read it.
@@ -192,6 +231,15 @@ export async function createStory({ authorId, body, file }) {
 export async function updateStory({ authorId, storyId, body, file }) {
   const story = await findOwnedStory({ authorId, storyId });
 
+  // Everything the lifebook referenced before this update. Anything the
+  // update drops — media the author removed, a replaced banner — is deleted
+  // from R2 after the save lands below, so the main store never accumulates
+  // discarded uploads.
+  const previousMedia = collectMediaRefs(story.chapters);
+  const previousBanner = story.bannerImage?.url
+    ? { key: story.bannerImage.key || "", url: story.bannerImage.url }
+    : null;
+
   let { title, visibility, language, status } = body;
 
   if (body.chapters !== undefined) {
@@ -215,6 +263,16 @@ export async function updateStory({ authorId, storyId, body, file }) {
 
   await story.save();
 
+  // Deleted only after a successful save — a failed save must never cost
+  // the author a still-referenced file.
+  const nextMedia =
+    body.chapters !== undefined ? collectMediaRefs(story.chapters) : previousMedia;
+  const droppedMedia = previousMedia.filter((ref) => !stillReferenced(ref, nextMedia));
+  if (previousBanner && previousBanner.url !== (story.bannerImage?.url || "")) {
+    droppedMedia.push(previousBanner);
+  }
+  await releaseMedia(droppedMedia);
+
   return story;
 }
 
@@ -225,7 +283,15 @@ export async function updateStory({ authorId, storyId, body, file }) {
 export async function deleteStory({ authorId, storyId }) {
   const story = await findOwnedStory({ authorId, storyId });
 
+  // The lifebook's photos and banner go with it — collect them before the
+  // documents are gone, then clean the R2 objects after the deletion lands.
+  const removedMedia = collectMediaRefs(story.chapters);
+  if (story.bannerImage?.url) {
+    removedMedia.push({ key: story.bannerImage.key || "", url: story.bannerImage.url });
+  }
+
   await story.deleteOne();
+  await releaseMedia(removedMedia);
 }
 
 /**
@@ -499,9 +565,11 @@ export async function deleteChapter({ authorId, storyId, chapterId }) {
 
   // Removing a chapter does not renumber the rest: `order` is the phase of
   // life it stands for, not its position in the list.
+  const removedMedia = collectMediaRefs([chapter]);
   story.chapters.pull(chapterId);
 
   await story.save();
+  await releaseMedia(removedMedia);
 
   return story;
 }
@@ -518,7 +586,7 @@ function sanitizeStoryInput(body = {}) {
 
   const storyType = body.storyType || "experience";
   if (
-    !["experience", "achievement", "challenge", "memory", "lesson", "other"].includes(
+    !["experience", "achievement", "challenge", "diseases", "failures", "memory", "lesson", "other"].includes(
       storyType,
     )
   ) {
@@ -599,6 +667,8 @@ export async function updateChapterStory({
 
   const input = sanitizeStoryInput({ ...body, title: body.title ?? entry.title });
 
+  const previousMedia = mediaRefs(entry.media);
+
   entry.title = input.title;
   entry.storyType = input.storyType;
   entry.content = input.content;
@@ -624,6 +694,11 @@ export async function updateChapterStory({
 
   await story.save();
 
+  // Media the author removed from this story is deleted from R2 too.
+  await releaseMedia(
+    previousMedia.filter((ref) => !stillReferenced(ref, mediaRefs(entry.media))),
+  );
+
   return story;
 }
 
@@ -645,9 +720,11 @@ export async function deleteChapterStory({
     throw notFoundError("Story not found in this chapter.");
   }
 
+  const removedMedia = mediaRefs(entry.media);
   chapter.stories.pull(storyEntryId);
 
   await story.save();
+  await releaseMedia(removedMedia);
 
   return story;
 }

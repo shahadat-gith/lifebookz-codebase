@@ -1,5 +1,5 @@
 import { HiOutlineMenu, HiOutlineX, HiOutlineChevronDown, HiOutlineChevronLeft, HiOutlineChevronRight, HiOutlineArrowLeft, HiOutlineUser, HiOutlineUserAdd, HiOutlineLogin, HiOutlineLogout, HiOutlineLockClosed, HiOutlineMail, HiOutlineBookOpen, HiOutlinePencil, HiOutlineTrash, HiOutlineClock, HiOutlineTag, HiOutlineDocumentText, HiOutlineDocumentAdd, HiOutlinePlus, HiOutlineCheck, HiOutlineSave, HiOutlineCog, HiOutlineRefresh, HiOutlineLink, HiOutlineCheckCircle, HiOutlineExclamationCircle, HiOutlineInformationCircle, HiOutlineSparkles, HiOutlineSearch, HiOutlineHome, HiOutlineViewGrid, HiOutlineShieldCheck, HiCamera, HiEye, HiOutlineGlobe, HiOutlinePhone, HiOutlineAtSymbol, HiOutlineChat, HiOutlineShare, HiOutlineTranslate, HiOutlineBriefcase, HiOutlineZoomIn, HiOutlineZoomOut, HiOutlinePhotograph, HiOutlineDeviceMobile, HiOutlineDesktopComputer, HiOutlineUpload, HiOutlineVideoCamera, HiOutlineFilter } from 'react-icons/hi';
-import { FaTwitter, FaLinkedin, FaInstagram, FaFacebook, FaYoutube, FaSpinner, FaRegHeart, FaHeart, FaStar, FaRegStar, FaRegBell } from 'react-icons/fa';
+import { FaTwitter, FaLinkedin, FaInstagram, FaFacebook, FaYoutube, FaSpinner, FaRegHeart, FaHeart, FaHeartbeat, FaExclamationTriangle, FaStar, FaRegStar, FaRegBell } from 'react-icons/fa';
 import { MdVerified, MdPending } from 'react-icons/md';
 export const Icons = {
  home: HiOutlineHome, menu: HiOutlineMenu, close: HiOutlineX,
@@ -18,7 +18,7 @@ export const Icons = {
  globe: HiOutlineGlobe, phone: HiOutlinePhone, atSymbol: HiOutlineAtSymbol,
  chat: HiOutlineChat, share: HiOutlineShare, translate: HiOutlineTranslate,
  heartRegular: FaRegHeart,
- heartSolid: FaHeart,
+ heartSolid: FaHeart, heartbeat: FaHeartbeat, exclamationTriangle: FaExclamationTriangle,
  bell: FaRegBell,
  starSolid: FaStar,
  starRegular: FaRegStar,

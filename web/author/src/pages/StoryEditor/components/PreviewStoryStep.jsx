@@ -12,6 +12,8 @@ const TYPE_LABELS = {
   experience: "Experience",
   achievement: "Achievement",
   challenge: "Challenge",
+  diseases: "Diseases",
+  failures: "Failures",
   memory: "Memory",
   lesson: "Lesson",
   other: "Other",

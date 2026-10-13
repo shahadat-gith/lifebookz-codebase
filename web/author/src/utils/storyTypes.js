@@ -36,6 +36,22 @@ export const STORY_TYPES = [
     icon: Icons.shieldCheck,
   },
   {
+    value: "diseases",
+    label: "Diseases",
+    hint: "Diseases I overcame",
+    color: "text-cyan-600",
+    tint: "bg-cyan-500/10 text-cyan-600",
+    icon: Icons.heartbeat,
+  },
+  {
+    value: "failures",
+    label: "Failures",
+    hint: "Something I failed at",
+    color: "text-orange-600",
+    tint: "bg-orange-500/10 text-orange-600",
+    icon: Icons.exclamationTriangle,
+  },
+  {
     value: "memory",
     label: "Memory",
     hint: "A moment I want to remember",

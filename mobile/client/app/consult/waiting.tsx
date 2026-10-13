@@ -135,10 +135,15 @@ function ExpiredScreen({
       <Text style={[styles.stateTitle, { color: theme.text }]}>
         Request not confirmed
       </Text>
-      <Text style={[styles.stateBody, { color: theme.textMuted, textAlign: "center" }]}>
+      <Text
+        style={[
+          styles.stateBody,
+          { color: theme.textMuted, textAlign: "center" },
+        ]}
+      >
         {expertName} didn&apos;t confirm your session within 5 minutes, so the
-        request has been cancelled. You won&apos;t be charged. Please book a
-        new expert — someone else may be available right away.
+        request has been cancelled. You won&apos;t be charged. Please book a new
+        expert — someone else may be available right away.
       </Text>
 
       <Button
@@ -202,7 +207,6 @@ export default function ConsultWaitingScreen() {
   // that arrived via WS/poll while we were waiting.
   const expired =
     expiredByTimer || status === "CANCELLED" || status === "EXPIRED";
-
 
   // WS event → invalidate the record → react-query refetches → status flips.
   // The socket is the signal, the API is the truth.
@@ -274,17 +278,23 @@ export default function ConsultWaitingScreen() {
   // authority and both paths show the same expiry screen.
   useEffect(() => {
     if (!deadline || status !== "PENDING") return undefined;
-    const timer = setTimeout(async () => {
-      if (expiredRef.current) return;
-      expiredRef.current = true;
-      setExpiredByTimer(true);
-      setNudgeOpen(false);
-      try {
-        await cancel(consultationId as string, "Expert did not confirm the session");
-      } catch {
-        /* already cancelled or expired server-side */
-      }
-    }, Math.max(0, deadline - Date.now()));
+    const timer = setTimeout(
+      async () => {
+        if (expiredRef.current) return;
+        expiredRef.current = true;
+        setExpiredByTimer(true);
+        setNudgeOpen(false);
+        try {
+          await cancel(
+            consultationId as string,
+            "Expert did not confirm the session",
+          );
+        } catch {
+          /* already cancelled or expired server-side */
+        }
+      },
+      Math.max(0, deadline - Date.now()),
+    );
     return () => clearTimeout(timer);
   }, [deadline, status, consultationId]);
 
@@ -301,7 +311,10 @@ export default function ConsultWaitingScreen() {
       if (!expiredRef.current) {
         expiredRef.current = true;
         setExpiredByTimer(true);
-        await cancel(consultationId as string, "User booked a different expert");
+        await cancel(
+          consultationId as string,
+          "User booked a different expert",
+        );
       }
     } catch {
       /* nothing left to cancel — continue to search either way */
@@ -330,7 +343,9 @@ export default function ConsultWaitingScreen() {
       await queryClient.invalidateQueries({ queryKey: ["consultations"] });
       router.replace("/bookings");
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Could not open payment. Please try again."));
+      toast.error(
+        apiErrorMessage(err, "Could not open payment. Please try again."),
+      );
     } finally {
       setPaying(false);
     }
@@ -346,7 +361,9 @@ export default function ConsultWaitingScreen() {
           <BackBar onPress={() => router.replace("/bookings")} />
         </View>
         <ExpiredScreen
-          expertName={expertName || consultation.data?.expert?.fullName || "your expert"}
+          expertName={
+            expertName || consultation.data?.expert?.fullName || "your expert"
+          }
           onBookOther={handleCancelAndBookNew}
           onBookings={() => router.replace("/bookings")}
           cancelling={cancelling}
@@ -397,8 +414,17 @@ export default function ConsultWaitingScreen() {
 
         {confirmed ? (
           <>
-            <View style={[styles.confirmedBadge, { backgroundColor: `${theme.success}1a` }]}>
-              <Ionicons name="checkmark-circle" size={16} color={theme.success} />
+            <View
+              style={[
+                styles.confirmedBadge,
+                { backgroundColor: `${theme.success}1a` },
+              ]}
+            >
+              <Ionicons
+                name="checkmark-circle"
+                size={16}
+                color={theme.success}
+              />
               <Text style={[styles.confirmedText, { color: theme.success }]}>
                 Session confirmed
               </Text>
@@ -407,9 +433,9 @@ export default function ConsultWaitingScreen() {
               You&apos;re almost there
             </Text>
             <Text style={[styles.body, { color: theme.textMuted }]}>
-              {expertName || "Your expert"} has confirmed your session.
-              Complete the payment to secure your slot — your session room
-              opens as soon as the payment goes through.
+              {expertName || "Your expert"} has confirmed your session. Complete
+              the payment to secure your slot — your session room opens as soon
+              as the payment goes through.
             </Text>
 
             <Pressable
@@ -427,8 +453,14 @@ export default function ConsultWaitingScreen() {
                 <ActivityIndicator color={theme.primaryForeground} />
               ) : (
                 <>
-                  <Ionicons name="card" size={17} color={theme.primaryForeground} />
-                  <Text style={[styles.payText, { color: theme.primaryForeground }]}>
+                  <Ionicons
+                    name="card"
+                    size={17}
+                    color={theme.primaryForeground}
+                  />
+                  <Text
+                    style={[styles.payText, { color: theme.primaryForeground }]}
+                  >
                     Pay now
                   </Text>
                 </>
@@ -446,9 +478,8 @@ export default function ConsultWaitingScreen() {
               <Text style={{ color: theme.text, fontWeight: "700" }}>
                 {expertName || "your expert"}
               </Text>
-              . We&apos;ll confirm the moment the expert responds — you can
-              keep this screen open, or check back anytime under My
-              Bookings.
+              . We&apos;ll confirm the moment the expert responds — you can keep
+              this screen open, or check back anytime under My Bookings.
             </Text>
 
             <View style={styles.liveRow}>
@@ -463,7 +494,9 @@ export default function ConsultWaitingScreen() {
 
       {nudgeOpen && !confirmed && (
         <GettingLateModal
-          expertName={expertName || consultation.data?.expert?.fullName || "your expert"}
+          expertName={
+            expertName || consultation.data?.expert?.fullName || "your expert"
+          }
           onDismiss={() => setNudgeOpen(false)}
           onBookOther={handleCancelAndBookNew}
         />

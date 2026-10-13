@@ -1,8 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../../worker/index.js"],
-  "sourceRoot": "C:\\Users\\Asus\\Desktop\\WEB APP\\LIFEBOOKZ\\web\\client\\.wrangler\\tmp\\deploy-5b5A9E",
-  "sourcesContent": ["// Static assets + SPA fallback. The `not_found_handling =\r\n// \"single-page-application\"` setting in wrangler.toml makes the assets layer\r\n// serve index.html for every unknown path (React Router deep links), so no\r\n// manual fallback fetch is needed here \u2014 fetching /index.html manually would\r\n// itself get redirected to / by the assets layer.\r\nexport default {\r\n  async fetch(request, env) {\r\n    return env.ASSETS.fetch(request);\r\n  },\r\n};\r\n"],
-  "mappings": ";AAKA,IAAO,gBAAQ;AAAA,EACb,MAAM,MAAM,SAAS,KAAK;AACxB,WAAO,IAAI,OAAO,MAAM,OAAO;AAAA,EACjC;AACF;",
-  "names": []
-}

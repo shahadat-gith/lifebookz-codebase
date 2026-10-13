@@ -68,7 +68,7 @@ const storySchema = new mongoose.Schema(
     // What kind of story this is (mockup "Choose Story Type")
     storyType: {
       type: String,
-      enum: ["experience", "achievement", "challenge", "memory", "lesson", "other"],
+      enum: ["experience", "achievement", "challenge", "diseases", "failures", "memory", "lesson", "other"],
       default: "experience",
     },
 

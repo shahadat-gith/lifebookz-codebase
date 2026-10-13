@@ -1,14 +1,10 @@
+// Static assets + SPA fallback. The `not_found_handling =
+// "single-page-application"` setting in wrangler.toml makes the assets layer
+// serve index.html for every unknown path (React Router deep links), so no
+// manual fallback fetch is needed here — fetching /index.html manually
+// redirects to / by the assets layer and would bounce every refresh home.
 export default {
   async fetch(request, env) {
-    const response = await env.ASSETS.fetch(request);
-
-    if (
-      response.status !== 404 ||
-      (request.method !== "GET" && request.method !== "HEAD")
-    ) {
-      return response;
-    }
-
-    return env.ASSETS.fetch(new Request(new URL("/index.html", request.url), request));
+    return env.ASSETS.fetch(request);
   },
 };

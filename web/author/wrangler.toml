@@ -5,6 +5,9 @@ main = "./worker/index.js"
 [assets]
 directory = "./dist"
 binding = "ASSETS"
+# Serve index.html for every unknown path (React Router deep links like
+# /profile must land on the app, not bounce to /).
+not_found_handling = "single-page-application"
 
 [[routes]]
 pattern = "author.lifebookz.com"
