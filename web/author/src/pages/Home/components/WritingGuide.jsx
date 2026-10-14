@@ -7,36 +7,43 @@ const STEPS_GUIDE = [
     label: "Select Chapter",
     hint: "Pick the chapter of your life this story belongs to — childhood, school, career…",
     icon: Icons.book,
+    tone: "bg-indigo-100 text-indigo-600",
   },
   {
     label: "Choose Story Type",
     hint: "Is it a memory, a life lesson, an achievement, or advice?",
     icon: Icons.tag,
+    tone: "bg-amber-100 text-amber-600",
   },
   {
     label: "Story Details",
     hint: "Give it a title and tell us when and where it happened.",
     icon: Icons.edit,
+    tone: "bg-sky-100 text-sky-600",
   },
   {
     label: "Write Your Story",
     hint: "The heart of it — write it the way you'd tell a friend.",
     icon: Icons.document,
+    tone: "bg-emerald-100 text-emerald-600",
   },
   {
     label: "Add Media",
     hint: "Attach photos and videos to bring the story alive.",
     icon: Icons.camera,
+    tone: "bg-violet-100 text-violet-600",
   },
   {
     label: "Choose Visibility",
     hint: "Public, or just you — chapter by chapter.",
     icon: Icons.shieldCheck,
+    tone: "bg-teal-100 text-teal-600",
   },
   {
     label: "Preview & Publish",
     hint: "See it exactly as readers will, then share it with the world.",
     icon: Icons.globe,
+    tone: "bg-rose-100 text-rose-600",
   },
 ];
 
@@ -61,31 +68,44 @@ export default function WritingGuide({ onStart }) {
           How to write your story
         </h3>
         <p className="mt-2.5 max-w-xl text-sm sm:text-base text-muted-foreground">
-          From a blank page to a published story — here is how the flow works.
+          From a blank page to a published story — here is how the flow works,
+          step 1 through step 7.
         </p>
         <button
           type="button"
           onClick={startStory}
-          className="mt-5 inline-flex items-center justify-center gap-2 rounded-full bg-accent text-accent-foreground px-6 py-3 text-sm font-bold hover:brightness-110 active:scale-[0.98] transition-all shadow-sm"
+          className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground px-6 py-3 font-display text-sm font-semibold shadow-sm hover:brightness-110 active:scale-[0.98] transition-all"
         >
           <Icons.plus className="h-4 w-4" />
           Write Now
         </button>
       </div>
 
-      {/* Steps */}
+      {/* Steps — numbered 1 through 7, same rail pattern as the client's
+          "How does Lifebookz work?" section */}
       <ol className="grid gap-3 px-5 pb-6 sm:px-8 sm:pb-8 sm:grid-cols-2">
-        {STEPS_GUIDE.map((s) => {
+        {STEPS_GUIDE.map((s, idx) => {
           const Icon = s.icon;
           return (
             <li key={s.label}>
-              <div className="h-full rounded-2xl bg-white/80 border border-border/50 px-4 py-3 flex items-start gap-3.5 shadow-xs">
-                <span className="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-xl bg-primary/5 border border-primary/10">
-                  <Icon className="h-4.5 w-4.5 text-primary" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-foreground">{s.label}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{s.hint}</p>
+              <div className="h-full flex overflow-hidden rounded-2xl bg-white/80 border border-border/50 shadow-xs">
+                {/* Number rail */}
+                <div className="flex w-12 shrink-0 flex-col items-center border-r border-border/50 bg-gradient-to-b from-primary/[0.06] to-transparent pt-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/25 bg-primary/5 font-display text-xs font-extrabold text-primary">
+                    {idx + 1}
+                  </span>
+                </div>
+
+                <div className="flex min-w-0 flex-1 items-start gap-3 px-4 py-3">
+                  <span
+                    className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${s.tone}`}
+                  >
+                    <Icon className="h-4.5 w-4.5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-foreground">{s.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{s.hint}</p>
+                  </div>
                 </div>
               </div>
             </li>

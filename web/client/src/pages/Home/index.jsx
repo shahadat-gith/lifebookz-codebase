@@ -3,6 +3,7 @@ import {
   Hero,
   ConsultationSection,
   WhatIsLifebookz,
+  HowItWorks,
   YourStoryMatters,
   LatestStories,
   TestimonialsSection,
@@ -22,6 +23,9 @@ export function HomePage() {
 
       {/* SECTION 3: WHAT IS LIFEBOOKZ? */}
       <WhatIsLifebookz />
+
+      {/* SECTION 3.5: HOW DOES LIFEBOOKZ WORK? */}
+      <HowItWorks />
 
       {/* SECTION 4: LATEST STORIES RAIL */}
       <LatestStories />

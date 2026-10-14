@@ -12,11 +12,13 @@ export function AppLayout() {
         <Outlet />
       </main>
 
-      <div className="hidden md:block">
-        <Footer />
-      </div>
+      {/* Footer is visible on every screen size; the spacer inside
+          BottomTabs keeps the fixed mobile nav from covering its bottom bar. */}
+      <Footer />
 
-      <BottomTabs />
+      <div className="md:hidden">
+        <BottomTabs />
+      </div>
     </div>
   );
 }

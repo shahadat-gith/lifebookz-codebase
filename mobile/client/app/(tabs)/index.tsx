@@ -14,6 +14,7 @@ import { StoryCard, StoryRailCard } from "../../src/components/StoryCard";
 import { EmptyState, Reveal } from "../../src/components/ui";
 import { ConsultFormSheet } from "../../src/components/ConsultFormSheet";
 import { WhatIsLifebookz } from "../../src/components/home/WhatIsLifebookz";
+import { HowItWorks } from "../../src/components/home/HowItWorks";
 import { CoachSection } from "../../src/components/home/CoachSection";
 import { TestimonialsRail } from "../../src/components/home/Testimonials";
 import {
@@ -213,6 +214,11 @@ export default function HomeScreen() {
         {/* WHAT IS LIFEBOOKZ — definition + authors/readers panels */}
         <Reveal delay={380}>
           <WhatIsLifebookz />
+        </Reveal>
+
+        {/* HOW DOES LIFEBOOKZ WORK — the eight-step journey */}
+        <Reveal delay={420}>
+          <HowItWorks />
         </Reveal>
 
         {/* TRENDING RAIL */}
