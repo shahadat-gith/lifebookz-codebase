@@ -100,12 +100,12 @@ export function YourStoryMatters() {
               </span>
 
               <h2 className="mt-5 font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl">
-                Your story matters.
+                Why your story matters?
               </h2>
 
               <p className="mt-3 max-w-md text-[15px] leading-7 text-muted-foreground">
                 The moments you lived through — the struggles, the joys, the
-                lessons — deserve more than to fade away.
+                lessons — deserve more than to fade away.A story doesn't have to belong to a celebrity, billionarie, successful entrepreneur, famous doctor, politicians, athletes, or public figure to matter. An ordinary person life can contain extraordinary lessons.
               </p>
 
               <ul className="mt-7 grid gap-3 sm:grid-cols-2 sm:gap-x-8">
@@ -124,7 +124,7 @@ export function YourStoryMatters() {
                   to={authorPortalUrl}
                   className="group inline-flex items-center gap-3 rounded-full bg-primary px-7 py-3.5 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110"
                 >
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15 transition-colors group-hover:bg-white/25">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent transition-colors group-hover:bg-white/25">
                     <Icons.plus className="h-4 w-4 text-white" />
                   </span>
                   Start Your Lifebook

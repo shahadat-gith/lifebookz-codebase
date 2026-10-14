@@ -157,10 +157,7 @@ export function WhatIsLifebookz() {
             transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             className="lg:sticky lg:top-28"
           >
-            <span className="inline-flex items-center gap-2 rounded-full border border-accent/15 bg-accent/[0.08] px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
-              <Icons.sparkles className="h-3 w-3" />
-              The idea
-            </span>
+
 
             <h2 className="mt-5 max-w-lg font-display text-[34px] font-extrabold leading-[1.05] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
               What is{" "}
@@ -186,15 +183,10 @@ export function WhatIsLifebookz() {
             </h2>
 
             <p className="mt-6 max-w-md text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
-              A digital home for life stories. Write your own memories and
-              leave a legacy — or read the lives of others and learn from the
-              lessons they lived.
+              Lifebookz is a digital  library of human life stories and experiences - a place to preserve your memories, experiences, struggles, achievements, relationhips and life lessons. It is also designed to help people learn from real human experiences.
             </p>
 
-            <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-border/70 bg-card px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-foreground/70 shadow-xs">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-              Write yours · Read theirs
-            </div>
+           
           </motion.div>
 
           {/* Two audiences — authors & readers */}

@@ -48,7 +48,7 @@ export function Hero() {
               initial={initial}
               animate="show"
               variants={fadeUp}
-              className="mt-3 w-full font-display text-3xl font-extrabold leading-[1.08] tracking-[-0.04em] text-primary sm:mt-4 sm:text-4xl md:text-5xl lg:mt-6 lg:max-w-[520px] lg:text-6xl lg:leading-[1.03] xl:text-7xl"
+              className="mt-3 w-full font-display text-4xl font-extrabold leading-[1.08] tracking-[-0.04em] text-primary sm:mt-4 sm:text-4xl md:text-5xl lg:mt-6 lg:max-w-[520px] lg:text-6xl lg:leading-[1.03] xl:text-7xl"
             >
               Every life
               <br />
@@ -78,7 +78,7 @@ export function Hero() {
               initial={initial}
               animate="show"
               variants={fadeUp}
-              className="mt-3 w-full text-xs leading-relaxed text-muted-foreground sm:mt-5 sm:text-sm sm:leading-6 lg:mt-6 lg:max-w-[470px] lg:text-lg lg:leading-8"
+              className="mt-3 w-full text-md leading-relaxed text-muted-foreground sm:mt-5 sm:text-sm sm:leading-6 lg:mt-6 lg:max-w-[470px] lg:text-lg lg:leading-8"
             >
               Preserve the story of your life—your memories, childhood, school
               and college experiences, relationships, challenges, and life
@@ -133,7 +133,7 @@ export function Hero() {
               variants={fadeUp}
               className="mt-3 w-full rounded-2xl border-l-4 border-accent bg-gradient-to-r from-accent/[0.14] via-accent/[0.06] to-transparent px-4 py-3 shadow-xs sm:mt-5 sm:px-6 sm:py-5 lg:mt-6 lg:max-w-[470px] lg:px-7 lg:py-6"
             >
-              <p className="flex items-start gap-2.5 text-xs leading-relaxed text-foreground/85 sm:text-sm sm:leading-6 lg:gap-3 lg:text-lg lg:leading-8">
+              <p className="flex items-start gap-2.5 text-md leading-relaxed text-foreground/85 sm:text-sm sm:leading-6 lg:gap-3 lg:text-lg lg:leading-8">
                 <Icons.sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent sm:h-4 sm:w-4 lg:h-5 lg:w-5" />
                 <span>
                   <span className="font-display font-extrabold italic text-accent">
