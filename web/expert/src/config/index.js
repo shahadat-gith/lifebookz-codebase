@@ -1,6 +1,9 @@
 export const config = {
   apiBase: import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000/api/v1',
   appName: 'Lifebookz Expert Portal',
+  // Accounts are created in the client portal (one account serves every
+  // portal), so sign-up links point there.
+  readerSignupUrl: import.meta.env.VITE_CLIENT_URL,
 };
 
 // Consultancy categories — kept in sync with the backend CONSULT_CATEGORIES.

@@ -195,14 +195,11 @@ export default function StoryEditorPage() {
     if (lifebookId) {
       saved = await storyApi.update(lifebookId, { chapters: nextChapters });
     } else {
-      const body = new FormData();
-      body.append("chapters", JSON.stringify(nextChapters));
-      body.append(
-        "title",
-        lifebookTitle?.trim() || draft.title?.trim() || "My Lifebook",
-      );
-      body.append("visibility", lifebookVisibility || "public");
-      if (bannerImage instanceof File) body.append("bannerImage", bannerImage);
+      const body = {
+        chapters: nextChapters,
+        title: lifebookTitle?.trim() || draft.title?.trim() || "My Lifebook",
+        visibility: lifebookVisibility || "public",
+      };
 
       saved = await storyApi.create(body);
 

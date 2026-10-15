@@ -7,6 +7,7 @@ import { useAuth } from "../../context/AuthContext";
 import ImageCropper from "../../components/common/ImageCropper";
 import LoadingScreen from "../../components/common/LoadingScreen";
 import { apiErrorMessage } from "../../utils/helpers";
+import { uploadImage } from "../../utils/uploads";
 import { Icons } from "../../icons";
 
 import ProfileImagesSection, {
@@ -20,7 +21,7 @@ import {
   emptyProfileForm,
   missingRequiredFields,
   profileForm,
-  profileFormData,
+  profilePayload,
 } from "./utils";
 
 /**
@@ -112,18 +113,17 @@ export default function ProfileEditPage() {
     setUploading(kind);
 
     try {
+      // Upload the cropped image straight to R2, then hand only its
+      // { url, key } descriptor to the profile endpoint.
+      const imageRef = await uploadImage(blob, kind);
       await updateProfile(
-        profileFormData({},
-          kind === "avatar" ? { avatar: blob } : { cover: blob },
-        ),
+        kind === "avatar" ? { avatar: imageRef } : { coverImage: imageRef },
       );
 
       if (kind === "avatar") {
         releasePreview(avatarPreview);
-        setAvatarBlob(null);
       } else {
         releasePreview(coverPreview);
-        setCoverBlob(null);
       }
 
       toast.success(
@@ -154,7 +154,7 @@ export default function ProfileEditPage() {
 
     setSaving(true);
     try {
-      await updateProfile(profileFormData(form));
+      await updateProfile(profilePayload(form));
 
       toast.success(
         author.isProfileCompleted

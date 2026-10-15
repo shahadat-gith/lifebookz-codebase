@@ -1,15 +1,21 @@
 import mongoose from "mongoose";
 import slugify from "slugify";
 import { nanoid } from "nanoid";
-import { imageSchema } from "./image.schema.js";
+
+/** Reference to a file stored in Cloudflare R2 (public URL + object key). */
+const imageSchema = new mongoose.Schema(
+  {
+    url: { type: String, default: "", trim: true },
+    key: { type: String, default: "", trim: true },
+  },
+  { _id: false }
+);
 
 const statsSchema = new mongoose.Schema(
   {
-    views: { type: Number, default: 0, min: 0 },
     likes: { type: Number, default: 0, min: 0 },
     comments: { type: Number, default: 0, min: 0 },
     shares: { type: Number, default: 0, min: 0 },
-    bookmarks: { type: Number, default: 0, min: 0 },
   },
   { _id: false }
 );
@@ -153,7 +159,7 @@ const storyBookSchema = new mongoose.Schema(
   {
     author: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Author",
+      ref: "User",
       required: true,
     },
 

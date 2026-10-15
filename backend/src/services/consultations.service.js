@@ -1,13 +1,11 @@
 import crypto from "node:crypto";
 import mongoose from "mongoose";
 
-import Expert from "../models/Expert.js";
-import Consultation from "../models/Consultation.js";
 import User from "../models/User.js";
-import Author from "../models/Author.js";
+import Consultation from "../models/Consultation.js";
 import HandoffTicket from "../models/HandoffTicket.js";
 import Payment from "../models/Payment.js";
-import { generateToken } from "../utils/helpers.js";
+import { generateToken, flattenUser, withId } from "../utils/helpers.js";
 import { CONSULT_CATEGORY_IDS } from "../constants/expert.constants.js";
 import config from "../config/index.js";
 import { logger } from "./logger.service.js";
@@ -41,8 +39,7 @@ import {
 } from "../utils/consultation.js";
 
 // Fields the consult results cards need.
-const EXPERT_SELECT =
-  "fullName username expertise qualification categories bio languages experience price avatar rating ratingCount sessions";
+const EXPERT_SELECT = "fullName avatar expert";
 
 const MIN_PROBLEM_LENGTH = 10;
 
@@ -81,7 +78,7 @@ export function roomUrlFor(consultationId) {
  * no second auth system, no shared cookies.
  */
 
-const HANDOFF_ACCOUNT_MODELS = { user: User, author: Author, expert: Expert };
+const HANDOFF_ROLES = ["user", "author", "expert"];
 
 /**
  * Mint a handoff ticket for the caller. The portal sends its own token; we
@@ -100,17 +97,16 @@ export async function createHandoffTicket({ token }) {
   }
 
   const role = decoded.role;
-  if (!HANDOFF_ACCOUNT_MODELS[role]) {
+  if (!HANDOFF_ROLES.includes(role)) {
     throw forbiddenError("This account type cannot open a consultation room.");
   }
 
-  const idClaim = role === "user" ? "userId" : `${role}Id`;
-  const accountId = decoded[idClaim];
+  const accountId = decoded.userId;
   if (!accountId) throw authenticationError("Invalid token.");
 
   // The account must still exist and be active — a stale token cannot mint
   // a ticket.
-  const account = await HANDOFF_ACCOUNT_MODELS[role].findById(accountId).select("_id status");
+  const account = await User.findById(accountId).select("_id status");
   if (!account) throw notFoundError("Account not found.");
   if (account.status && account.status !== "active") {
     throw forbiddenError("This account is not active.");
@@ -127,6 +123,16 @@ export async function createHandoffTicket({ token }) {
   });
 
   return { code };
+}
+
+/**
+ * The token always carries the account's CURRENT role, resolved from the
+ * user table — the role captured when the ticket was minted may have
+ * changed (e.g. the account upgraded to expert since).
+ */
+async function resolveTicketRole(ticket) {
+  const account = await User.findById(ticket.accountId).select("role").lean();
+  return account?.role || ticket.role;
 }
 
 /**
@@ -147,11 +153,11 @@ export async function exchangeHandoffTicket({ code }) {
     throw authenticationError("This sign-in link is invalid, used, or expired.");
   }
 
-  const claim = ticket.role === "user" ? "userId" : `${ticket.role}Id`;
+  const role = await resolveTicketRole(ticket);
 
   return {
-    token: generateToken({ role: ticket.role, [claim]: ticket.accountId }),
-    role: ticket.role,
+    token: generateToken({ role, userId: ticket.accountId }),
+    role,
   };
 }
 
@@ -267,7 +273,7 @@ export async function expireStaleConsultations() {
         },
       },
     );
-    await Expert.updateOne({ _id: doc.expert }, { $inc: { sessions: 1 } });
+    await User.updateOne({ _id: doc.expert }, { $inc: { "expert.sessions": 1 } });
     abandoned += 1;
   }
 
@@ -310,20 +316,21 @@ export async function matchExperts({ problem, category, limit }) {
     .distinct("expert");
 
   const query = {
+    roles: "expert",
     status: "active",
-    "verification.status": "approved",
-    isAvailable: { $ne: false },
+    "expert.verification.status": "approved",
+    "expert.isAvailable": { $ne: false },
     _id: { $nin: busyIds },
   };
 
-  if (cleanCategory) query.categories = cleanCategory;
+  if (cleanCategory) query["expert.categories"] = cleanCategory;
 
-  const experts = await Expert.find(query).select(EXPERT_SELECT).lean();
+  const experts = await User.find(query).select(EXPERT_SELECT).lean();
 
-  experts.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  experts.sort((a, b) => (b.expert?.rating || 0) - (a.expert?.rating || 0));
 
   return {
-    experts: experts.slice(0, safeLimit),
+    experts: experts.slice(0, safeLimit).map(flattenUser),
     category: cleanCategory || null,
     matched: false,
   };
@@ -350,11 +357,12 @@ export async function createConsultation({ user, input }) {
     throw validationError("Unknown consultancy category.");
   }
 
-  const expert = await Expert.findOne({
+  const expert = await User.findOne({
     _id: expertId,
+    roles: "expert",
     status: "active",
-    "verification.status": "approved",
-  }).select("fullName email price");
+    "expert.verification.status": "approved",
+  }).select("fullName email expert.price");
 
   if (!expert) {
     throw notFoundError("Expert not found or not available.");
@@ -369,7 +377,7 @@ export async function createConsultation({ user, input }) {
     userName: user.fullName || "",
     userEmail: user.email || "",
     // Display price at request time; the binding amount is set on acceptance.
-    amount: Math.round((expert.price || 0) * 100),
+    amount: Math.round((expert.expert?.price || 0) * 100),
     currency: "INR",
     status: "PENDING",
     requestExpiresAt: new Date(Date.now() + config.consult.requestTtlHours * 60 * 60 * 1000),
@@ -405,6 +413,30 @@ function participantFilter(id, role, extra = {}) {
   return role === "expert" ? { expert: id, ...extra } : { user: id, ...extra };
 }
 
+/**
+ * Sides the caller may resolve to, in priority order. A dual account
+ * (author + expert) usually acts as the expert, but can still reach its
+ * client-side bookings — the side is confirmed against the document.
+ */
+function sideCandidatesOf({ role, roles }) {
+  const held = Array.isArray(roles) && roles.length > 0 ? roles : [role];
+
+  if (held.includes("expert")) {
+    return held.includes("user") ? ["expert", "user"] : ["expert"];
+  }
+
+  return ["user"];
+}
+
+/** Flatten the populated user/expert blocks (lean docs bypass toJSON). */
+function flattenParticipants(consultation) {
+  return withId({
+    ...consultation,
+    user: flattenUser(consultation.user),
+    expert: flattenUser(consultation.expert),
+  });
+}
+
 export async function listMine({ userId, role = "user", status, limit, page }) {
   if (!userId) throw authenticationError("Authentication required.");
 
@@ -421,8 +453,8 @@ export async function listMine({ userId, role = "user", status, limit, page }) {
 
   const [consultations, total] = await Promise.all([
     Consultation.find(filter)
-      .populate("expert", "fullName username expertise avatar rating ratingCount price")
-      .populate("user", "fullName username avatar")
+      .populate("expert", "fullName avatar expert")
+      .populate("user", "fullName avatar")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(lim)
@@ -465,7 +497,7 @@ export async function listMine({ userId, role = "user", status, limit, page }) {
   }));
 
   return {
-    consultations: withPaid,
+    consultations: withPaid.map(flattenParticipants),
     total,
     page: pg,
     limit: lim,
@@ -473,17 +505,25 @@ export async function listMine({ userId, role = "user", status, limit, page }) {
   };
 }
 
-export async function getForParticipant({ id, role, userId }) {
+export async function getForParticipant({ id, role, roles, userId }) {
   if (!userId) throw authenticationError("Authentication required.");
 
   await expireStaleConsultations();
 
-  const consultation = await Consultation.findOne(
-    participantFilter(userId, role, { _id: id }),
-  )
-    .populate("expert", "fullName username expertise avatar rating ratingCount price")
-    .populate("user", "fullName username avatar")
-    .lean();
+  let consultation = null;
+  let side = "user";
+  for (const candidate of sideCandidatesOf({ role, roles })) {
+    consultation = await Consultation.findOne(
+      participantFilter(userId, candidate, { _id: id }),
+    )
+      .populate("expert", "fullName avatar expert")
+      .populate("user", "fullName avatar")
+      .lean();
+    if (consultation) {
+      side = candidate;
+      break;
+    }
+  }
 
   if (!consultation) throw notFoundError("Consultation not found.");
 
@@ -502,7 +542,7 @@ export async function getForParticipant({ id, role, userId }) {
     );
   const confirmTimeoutMs = config.consult.confirmTimeoutMin * 60 * 1000;
   return {
-    ...consultation,
+    ...flattenParticipants(consultation),
     paid,
     confirmDeadline:
       consultation.status === "PENDING" && consultation.createdAt
@@ -530,10 +570,10 @@ export async function acceptConsultation({ expertId, consultationId }) {
 
   await expireStaleConsultations();
 
-  const expert = await Expert.findById(expertId).select("fullName price");
+  const expert = await User.findById(expertId).select("fullName expert.price");
   if (!expert) throw notFoundError("Expert not found.");
 
-  const amount = Math.round((expert.price || 0) * 100);
+  const amount = Math.round((expert.expert?.price || 0) * 100);
 
   const confirmed = await runInTransaction(async (session) => {
     // 1. Lock the request: only a still-PENDING, unexpired one can flip.
@@ -622,7 +662,7 @@ export async function acceptConsultation({ expertId, consultationId }) {
 export async function declineConsultation({ expertId, consultationId, reason }) {
   if (!expertId) throw authenticationError("Authentication required.");
 
-  const expert = await Expert.findById(expertId).select("fullName");
+  const expert = await User.findById(expertId).select("fullName");
 
   const consultation = await Consultation.findOneAndUpdate(
     { _id: consultationId, expert: expertId, status: "PENDING" },
@@ -663,21 +703,35 @@ export async function declineConsultation({ expertId, consultationId, reason }) 
 const USER_CANCELLABLE = ["PENDING", "CONFIRMED"];
 const EXPERT_CANCELLABLE = ["PENDING", "CONFIRMED", "IN_PROGRESS"];
 
-export async function cancelConsultation({ userId, role, consultationId, reason }) {
+export async function cancelConsultation({ userId, role, roles, consultationId, reason }) {
   if (!userId) throw authenticationError("Authentication required.");
 
-  const cancellable = role === "expert" ? EXPERT_CANCELLABLE : USER_CANCELLABLE;
+  // Resolve the caller's actual side on THIS consultation first — the
+  // primary role alone lies for dual accounts (an expert rating a booked
+  // expert as a client, etc.). The side decides the cancellable states.
+  let side = null;
+  for (const candidate of sideCandidatesOf({ role, roles })) {
+    const exists = await Consultation.exists(
+      participantFilter(userId, candidate, { _id: consultationId }),
+    );
+    if (exists) {
+      side = candidate;
+      break;
+    }
+  }
+
+  const cancellable = side === "expert" ? EXPERT_CANCELLABLE : side === "user" ? USER_CANCELLABLE : [];
 
   const consultation = await Consultation.findOneAndUpdate(
     {
       _id: consultationId,
-      ...participantFilter(userId, role),
+      ...participantFilter(userId, side || role),
       status: { $in: cancellable },
     },
     {
       $set: {
         status: "CANCELLED",
-        cancelledBy: role,
+        cancelledBy: side || role,
         cancelReason: reason?.trim() || "Cancelled.",
       },
     },
@@ -780,12 +834,12 @@ export async function refreshExpertRating(expertId) {
     },
   ]);
 
-  await Expert.updateOne(
+  await User.updateOne(
     { _id: expertId },
     {
       $set: {
-        rating: stats ? Math.round(stats.average * 10) / 10 : 0,
-        ratingCount: stats ? stats.count : 0,
+        "expert.rating": stats ? Math.round(stats.average * 10) / 10 : 0,
+        "expert.ratingCount": stats ? stats.count : 0,
       },
     },
   );
@@ -815,19 +869,34 @@ export async function refreshExpertRating(expertId) {
  * Throws unless the caller is the assigned user or the assigned expert —
  * the ids always come from the token, never from the request.
  */
-export async function authorizeParticipant({ consultationId, userId, role }) {
+export async function authorizeParticipant({ consultationId, userId, role, roles }) {
   if (!userId) throw authenticationError("Authentication required.");
-  if (role !== "user" && role !== "expert") {
+
+  // Strict: the caller must actually hold the user or expert capability —
+  // primary role or the roles list. Other roles (author alone) never grant
+  // session access on their own.
+  const held = [
+    ...(Array.isArray(roles) ? roles : []),
+    ...(role ? [role] : []),
+  ];
+  const sides = [];
+  if (held.includes("expert")) sides.push("expert");
+  if (held.includes("user")) sides.push("user");
+
+  if (sides.length === 0) {
     throw forbiddenError("Only the consultation's user and expert can access its session.");
   }
 
-  const consultation = await Consultation.findOne({
-    _id: consultationId,
-    ...(role === "expert" ? { expert: userId } : { user: userId }),
-  });
+  for (const side of sides) {
+    const consultation = await Consultation.findOne({
+      _id: consultationId,
+      ...(side === "expert" ? { expert: userId } : { user: userId }),
+    });
 
-  if (!consultation) throw notFoundError("Consultation not found.");
-  return { consultation, side: role };
+    if (consultation) return { consultation, side };
+  }
+
+  throw notFoundError("Consultation not found.");
 }
 
 function sessionView(consultation, side) {
@@ -1048,14 +1117,14 @@ export async function endSession({ consultationId, userId, role, reason }) {
 
   // Only a session that actually ran counts towards the expert's tally.
   if (updated.session?.durationSeconds > 0) {
-    await Expert.updateOne({ _id: consultation.expert }, { $inc: { sessions: 1 } });
+    await User.updateOne({ _id: consultation.expert }, { $inc: { "expert.sessions": 1 } });
   }
 
   // The user is invited to share their experience.
   sendBookingStatusMail({
     to: consultation.userEmail,
     clientName: consultation.userName,
-    expertName: (await Expert.findById(consultation.expert).select("fullName"))?.fullName,
+    expertName: (await User.findById(consultation.expert).select("fullName"))?.fullName,
     status: "completed",
     bookingsUrl: (config.frontend.client || "").replace(/\/$/, "") + "/bookings",
   });
@@ -1091,7 +1160,7 @@ async function forceComplete(consultation) {
   if (result.modifiedCount > 0) {
     await deleteChimeMeeting(consultation);
     if (sessionDurationSeconds(consultation.session?.startedAt, endedAt) > 0) {
-      await Expert.updateOne({ _id: consultation.expert }, { $inc: { sessions: 1 } });
+      await User.updateOne({ _id: consultation.expert }, { $inc: { "expert.sessions": 1 } });
     }
     logger.info("Stale consultation session force-completed", {
       consultationId: consultation.id,

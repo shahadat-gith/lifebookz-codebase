@@ -78,7 +78,7 @@ export const apiLimiter = rateLimit({
   ...base,
   windowMs: 5 * 60 * 1000, // 5 minutes
   limit: 300,
-  skip: (req) => isProbeRequest(req) || webhookSkip(req),
+  skip: (req) => isProbeRequest(req) || webhookSkip(req) || isTestRequest(),
 });
 
 /**
@@ -92,8 +92,16 @@ export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   limit: 20,
   skipSuccessfulRequests: true, // only failed attempts count
-  skip: (req) => isProbeRequest(req),
+  skip: (req) => isProbeRequest(req) || isTestRequest(),
 });
+
+/**
+ * Automated end-to-end suites fire hundreds of requests from one loopback
+ * IP; limiter counters for them are meaningless, so NODE_ENV=test skips.
+ */
+export function isTestRequest() {
+  return process.env.NODE_ENV === "test";
+}
 
 /**
  * The Razorpay webhook is server-to-server (Razorpay's IPs, not users') —

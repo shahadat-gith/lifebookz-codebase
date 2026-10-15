@@ -13,7 +13,6 @@ const StoryDashboard = lazy(() => import("./pages/StoryDashboard"));
 const StoryDetail = lazy(() => import("./pages/StoryDetail"));
 const AuthorProfile = lazy(() => import("./pages/AuthorProfile"));
 const Login = lazy(() => import("./pages/Login"));
-const Register = lazy(() => import("./pages/Register"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const Profile = lazy(() => import("./pages/Profile"));
 const ProfileEdit = lazy(() => import("./pages/ProfileEdit"));
@@ -111,7 +110,8 @@ export default function App() {
 
           <Route element={<AuthLayout />}>
             <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            {/* Sign-up lives in the client portal — accounts are shared. */}
+            <Route path="/register" element={<Navigate to="/login" replace />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
           </Route>
 

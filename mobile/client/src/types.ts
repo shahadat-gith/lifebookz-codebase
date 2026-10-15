@@ -10,7 +10,6 @@ export interface User {
   id?: string;
   _id?: string;
   fullName?: string;
-  username?: string;
   email?: string;
   role?: string;
   avatar?: MediaRef;
@@ -62,7 +61,6 @@ export interface Author {
   _id?: string;
   id?: string;
   fullName?: string;
-  username?: string;
   avatar?: MediaRef;
   bio?: string;
   profession?: string;

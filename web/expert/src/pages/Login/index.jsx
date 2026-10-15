@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import toast from "react-hot-toast";
 
 import { useAuth } from "../../context/AuthContext";
+import { config } from "../../config";
 import { apiError } from "../../utils/helpers";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
@@ -110,13 +111,13 @@ export default function Login() {
 
       <div className="mt-7 pt-6 border-t border-border/40 text-center">
         <p className="text-sm text-muted-foreground">
-          Not registered as an expert?{" "}
-          <Link
-            to="/register"
+          No account yet?{" "}
+          <a
+            href={config.readerSignupUrl || "/"}
             className="text-primary font-semibold hover:underline transition-colors"
           >
-            Apply here
-          </Link>
+            Create an account
+          </a>
         </p>
       </div>
     </AuthShell>

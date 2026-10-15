@@ -1,7 +1,7 @@
 /**
  * Everything profile *editing* derives rather than renders: the crop each
- * image slot needs, and the multipart body the save sends. The read-only
- * profile's derivations live in `../Profile/utils`.
+ * image slot needs. The read-only profile's derivations live in
+ * `../Profile/utils`.
  */
 
 export const ACCEPTED_IMAGE_TYPES = "image/png,image/jpeg,image/webp,image/gif";
@@ -30,19 +30,4 @@ export function cropConfigFor(kind) {
   };
 }
 
-/**
- * The multipart body for a save. Only the fields being changed are
- * included, so an image-only save never touches the name (and vice versa)
- * and an untouched image keeps its stored file.
- */
-export function buildProfileFormData({ fullName, avatarFile, coverFile }) {
-  const payload = new FormData();
 
-  if (fullName !== undefined && fullName !== null) {
-    payload.append("fullName", fullName);
-  }
-  if (avatarFile) payload.append("avatar", avatarFile, "avatar.jpg");
-  if (coverFile) payload.append("coverImage", coverFile, "cover.jpg");
-
-  return payload;
-}

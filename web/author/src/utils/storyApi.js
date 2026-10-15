@@ -1,18 +1,15 @@
 import api from '../config/api';
 
 // Story (lifebook) API methods
+// All payloads are JSON — files upload straight to R2 via presigned URLs
+// (POST /uploads/presign) and only their { url, key } travel in the body.
 export async function create(data) {
-  // data can be a plain object (JSON) or FormData
-  const res = await api.post('/stories', data, {
-    headers: data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {},
-  });
+  const res = await api.post('/stories', data);
   return res.data.data;
 }
 
 export async function update(storyId, data) {
-  const res = await api.patch(`/stories/${storyId}`, data, {
-    headers: data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {},
-  });
+  const res = await api.patch(`/stories/${storyId}`, data);
   return res.data.data;
 }
 

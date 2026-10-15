@@ -26,7 +26,6 @@ export async function list(req, res, next) {
 export async function mine(req, res, next) {
   try {
     const testimonial = await testimonialService.getMyTestimonial({
-      role: req.role,
       userId: req.user?.id,
     });
 

@@ -1,14 +1,18 @@
 import * as expertService from "../services/expert.service.js";
+import * as passwordReset from "../services/passwordReset.service.js";
+import { parseImageRef } from "../utils/media.js";
 
-export async function register(req, res, next) {
+export async function upgrade(req, res, next) {
   try {
-    const { expert, token } = await expertService.registerExpert({
+    const { expert, previousRole, token } = await expertService.upgradeToExpert({
+      userId: req.user?.id,
       body: req.body,
-      file: req.file,
+      avatar: parseImageRef(req.body.avatar, "avatar"),
     });
 
-    return res.status(201).json({
+    return res.status(200).json({
       success: true,
+      message: `Upgraded from ${previousRole} to expert. Your application is pending verification.`,
       data: { expert, token },
     });
   } catch (error) {
@@ -59,8 +63,8 @@ export async function updateMe(req, res, next) {
     const expert = await expertService.updateExpert({
       userId: req.user?.id,
       body: req.body,
-      file: req.files?.avatar?.[0] || null,
-      coverFile: req.files?.coverImage?.[0] || null,
+      avatar: parseImageRef(req.body.avatar, "avatar"),
+      coverImage: parseImageRef(req.body.coverImage, "coverImage"),
     });
 
     return res.json({ success: true, data: expert });
@@ -106,7 +110,7 @@ export async function getProfile(req, res, next) {
 
 export async function forgotPassword(req, res, next) {
   try {
-    await expertService.requestPasswordReset({ email: req.body.email });
+    await passwordReset.requestPasswordReset({ email: req.body.email, role: "expert" });
 
     return res.json({
       success: true,
@@ -120,7 +124,7 @@ export async function forgotPassword(req, res, next) {
 
 export async function verifyResetOTP(req, res, next) {
   try {
-    const resetToken = await expertService.verifyPasswordResetOTP({
+    const resetToken = await passwordReset.verifyPasswordResetOTP({
       email: req.body.email,
       otp: req.body.otp,
     });
@@ -137,7 +141,7 @@ export async function verifyResetOTP(req, res, next) {
 
 export async function resetPassword(req, res, next) {
   try {
-    await expertService.resetPassword({
+    await passwordReset.resetPassword({
       resetToken: req.body.resetToken,
       password: req.body.password,
     });

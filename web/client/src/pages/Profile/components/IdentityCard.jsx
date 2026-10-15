@@ -3,7 +3,7 @@ import { formatJoined } from "../utils";
 
 /**
  * The identity card: the 16:9 cover banner, the avatar, and the member's
- * name, username, email and join date.
+ * name, email and join date.
  *
  * In `editable` mode its camera buttons open the pickers rendered by
  * `ProfileImageInputs`. In read-only mode the share and edit buttons show
@@ -121,11 +121,6 @@ export default function IdentityCard({
           </h2>
 
           <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground sm:justify-start">
-            {user?.username && (
-              <span className="inline-flex items-center gap-1.5">
-                <Icons.id className="h-3.5 w-3.5" />@{user.username}
-              </span>
-            )}
             {user?.email && (
               <span className="inline-flex items-center gap-1.5">
                 <Icons.mail className="h-3.5 w-3.5" />

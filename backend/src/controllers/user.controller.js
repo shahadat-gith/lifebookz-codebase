@@ -1,4 +1,6 @@
 import * as userService from "../services/user.service.js";
+import * as passwordReset from "../services/passwordReset.service.js";
+import { parseImageRef } from "../utils/media.js";
 
 export async function register(req, res, next) {
   try {
@@ -6,7 +8,6 @@ export async function register(req, res, next) {
       email: req.body.email,
       password: req.body.password,
       fullName: req.body.fullName,
-      file: req.file,
     });
 
     return res.status(201).json({
@@ -50,8 +51,8 @@ export async function updateMe(req, res, next) {
     const user = await userService.updateUser({
       userId: req.user?.id,
       fullName: req.body.fullName,
-      file: req.files?.avatar?.[0] || null,
-      coverFile: req.files?.coverImage?.[0] || null,
+      avatar: parseImageRef(req.body.avatar, "avatar"),
+      coverImage: parseImageRef(req.body.coverImage, "coverImage"),
     });
 
     return res.json({ success: true, data: user });
@@ -85,7 +86,7 @@ export async function getProfile(req, res, next) {
 
 export async function forgotPassword(req, res, next) {
   try {
-    await userService.requestPasswordReset({ email: req.body.email });
+    await passwordReset.requestPasswordReset({ email: req.body.email, role: "user" });
 
     return res.json({
       success: true,
@@ -99,7 +100,7 @@ export async function forgotPassword(req, res, next) {
 
 export async function verifyResetOTP(req, res, next) {
   try {
-    const resetToken = await userService.verifyPasswordResetOTP({
+    const resetToken = await passwordReset.verifyPasswordResetOTP({
       email: req.body.email,
       otp: req.body.otp,
     });
@@ -116,7 +117,7 @@ export async function verifyResetOTP(req, res, next) {
 
 export async function resetPassword(req, res, next) {
   try {
-    await userService.resetPassword({
+    await passwordReset.resetPassword({
       resetToken: req.body.resetToken,
       password: req.body.password,
     });

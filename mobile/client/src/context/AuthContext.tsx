@@ -16,7 +16,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   loginUser: (email: string, password: string) => Promise<void>;
-  registerUser: (data: FormData) => Promise<void>;
+  registerUser: (data: { email: string; password: string; fullName: string }) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => Promise<void>;
 }
@@ -57,12 +57,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(res.data.data.user);
   }, []);
 
-  const registerUser = useCallback(async (data: FormData) => {
-    // Let axios auto-detect the FormData and set the multipart Content-Type.
-    const res = await api.post("/users/register", data);
-    await SecureStore.setItemAsync(TOKEN_KEY, res.data.data.token);
-    setUser(res.data.data.user);
-  }, []);
+  const registerUser = useCallback(
+    async (data: { email: string; password: string; fullName: string }) => {
+      const res = await api.post("/users/register", data);
+      await SecureStore.setItemAsync(TOKEN_KEY, res.data.data.token);
+      setUser(res.data.data.user);
+    },
+    [],
+  );
 
   const logout = useCallback(async () => {
     try {

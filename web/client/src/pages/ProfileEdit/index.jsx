@@ -3,14 +3,13 @@ import toast from "react-hot-toast";
 
 import { useAuth } from "../../context/AuthContext";
 import { Icons } from "../../icons";
-
 import ImageCropper from "./components/ImageCropper";
 import IdentityCard from "../Profile/components/IdentityCard";
 import PersonalDetailsForm from "./components/PersonalDetailsForm";
 import ProfileImageInputs from "./components/ProfileImageInputs";
 import { ProfileLoading, SignedOutNotice } from "../Profile/components/ProfileStates";
 import useProfileImages from "./hooks/useProfileImages";
-import { buildProfileFormData } from "./utils";
+import { uploadImage } from "../../utils/uploads";
 
 /**
  * Editing the member's profile: the name saves through the form, while the
@@ -56,7 +55,7 @@ export default function ProfileEdit() {
     setSaving(true);
 
     try {
-      await updateUser(buildProfileFormData({ fullName: cleanName }));
+      await updateUser({ fullName: cleanName });
       toast.success("Profile updated.");
     } catch (err) {
       toast.error(
@@ -73,7 +72,7 @@ export default function ProfileEdit() {
     setFieldError("");
   };
 
-  /* ---------- Images: crop, then upload right away ---------- */
+  /* ---------- Images: crop, then upload straight to R2 ---------- */
   const handleCropped = async (blob) => {
     const kind = images.cropping?.kind;
     images.cancelCrop();
@@ -82,12 +81,13 @@ export default function ProfileEdit() {
     setUploading(kind);
 
     try {
-      const payload =
-        kind === "avatar"
-          ? buildProfileFormData({ avatarFile: blob })
-          : buildProfileFormData({ coverFile: blob });
+      // Upload the cropped image straight to R2, then hand only its
+      // { url, key } descriptor to the profile endpoint.
+      const imageRef = await uploadImage(blob, kind);
+      await updateUser(
+        kind === "avatar" ? { avatar: imageRef } : { coverImage: imageRef },
+      );
 
-      await updateUser(payload);
       toast.success(
         kind === "avatar" ? "Profile photo updated." : "Cover image updated.",
       );

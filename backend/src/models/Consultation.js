@@ -98,7 +98,7 @@ const consultationSchema = new mongoose.Schema(
 
     expert: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Expert",
+      ref: "User",
       required: true,
       index: true,
     },

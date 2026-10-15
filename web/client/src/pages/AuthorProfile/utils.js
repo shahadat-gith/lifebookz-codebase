@@ -27,10 +27,9 @@ export function filledSocialLinks(socialLinks = {}) {
     .map(([key, url]) => ({ key, url }));
 }
 
-/** @handle · PROFESSION · Joined <date>, in one row. */
+/** PROFESSION · Joined <date>, in one row. */
 export function profileMeta(author = {}) {
   return [
-    author.username ? `@${author.username}` : "",
     author.profession || "",
     joinedLabel(author.createdAt),
   ].filter(Boolean);

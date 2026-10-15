@@ -11,32 +11,25 @@ import dns from "node:dns";
 import mongoose from "mongoose";
 import config from "../src/config/index.js";
 import User from "../src/models/User.js";
-import Author from "../src/models/Author.js";
-import Expert from "../src/models/Expert.js";
 
 // Some local resolvers refuse SRV lookups, which mongodb+srv:// needs.
 dns.setServers(["8.8.8.8", "1.1.1.1"]);
 
 const CHECKS = [
-  { model: User, fields: ["fullName", "email", "username"] },
-  { model: Author, fields: ["fullName", "email", "username"] },
+  // One user table holds every account type; the signup-critical fields
+  // must be present whatever the role, so doc.save() never blows up on
+  // flows that only touch `auth` (password reset being the one that hurts).
   {
-    model: Expert,
-    fields: [
-      "fullName",
-      "email",
-      "username",
-      "phone",
-      "expertise",
-      "qualification",
-    ],
+    model: User,
+    fields: ["fullName", "email"],
+    label: "User",
   },
 ];
 
 async function main() {
   await mongoose.connect(config.database.url);
 
-  for (const { model, fields } of CHECKS) {
+  for (const { model, fields, label } of CHECKS) {
     const collection = model.collection;
     const label = model.modelName;
 

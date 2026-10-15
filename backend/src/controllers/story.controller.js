@@ -12,7 +12,6 @@ export async function create(req, res, next) {
     const story = await storyService.createStory({
       authorId: req.user.id,
       body: req.body,
-      file: req.file,
     });
 
     res.status(201).json({ success: true, data: story });
@@ -31,7 +30,6 @@ export async function update(req, res, next) {
       authorId: req.user.id,
       storyId: req.params.storyId,
       body: req.body,
-      file: req.file,
     });
 
     res.json({ success: true, data: story });
@@ -254,18 +252,13 @@ export async function unpublish(req, res, next) {
 }
 
 /**
- * Who is acting: the account id, the collection it lives in, and the name
- * and avatar to denormalize onto likes and comments. Works for readers,
- * authors and experts alike.
+ * Who is acting: the account id and the name to denormalize onto story
+ * likes. Works for readers, authors and experts alike — one user table.
  */
 function actorOf(req) {
-  const MODEL_BY_ROLE = { user: "User", author: "Author", expert: "Expert" };
-
   return {
     userId: req.user.id,
-    userModel: MODEL_BY_ROLE[req.role] || "User",
     fullName: req.user.fullName || "A reader",
-    avatarUrl: req.user.avatar?.url || "",
   };
 }
 
@@ -342,7 +335,6 @@ export async function getComments(req, res, next) {
       page: req.query.page,
       limit: req.query.limit,
       viewerId: req.user?.id,
-      viewerModel: req.role,
     });
 
     res.json({ success: true, data });
@@ -357,11 +349,9 @@ export async function getComments(req, res, next) {
  */
 export async function toggleCommentLike(req, res, next) {
   try {
-    const MODEL_BY_ROLE = { user: "User", author: "Author", expert: "Expert" };
     const result = await storyService.toggleCommentLike({
       commentId: req.params.commentId,
       whoId: req.user.id,
-      whoModel: MODEL_BY_ROLE[req.role] || "User",
     });
 
     res.json({ success: true, data: result });

@@ -12,7 +12,6 @@ const Home = lazy(() => import('./pages/Home'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const SessionWait = lazy(() => import('./pages/SessionWait'));
 const Login = lazy(() => import('./pages/Login'));
-const Register = lazy(() => import('./pages/Register'));
 const Profile = lazy(() => import('./pages/Profile'));
 const ProfileEdit = lazy(() => import('./pages/ProfileEdit'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
@@ -59,10 +58,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
-            {/* Live sessions moved to consult.lifebookz.com — the dashboard's
-                Join button runs the cross-subdomain handoff directly. */}
-            {/* Live waiting room — where the expert tracks the client after
-                confirming (client paying → client joined → join now). */}
+
             <Route
               path="/session-wait/:id"
               element={
@@ -91,7 +87,8 @@ export default function App() {
 
           <Route element={<AuthLayout />}>
             <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            {/* Sign-up lives in the client portal — accounts are shared. */}
+            <Route path="/register" element={<Navigate to="/login" replace />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
           </Route>

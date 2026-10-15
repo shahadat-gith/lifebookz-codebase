@@ -84,23 +84,18 @@ export function missingRequiredFields(form) {
 }
 
 /**
- * The multipart body the API expects. Images are only attached when they
- * were actually changed on this visit, so saving other edits never re-uploads
- * a picture that is already stored.
+ * The JSON body the API expects. Images are never included here — they
+ * upload straight to R2 via presigned URLs and only their `{ url, key }`
+ * descriptor travels in the PATCH body.
  */
-export function profileFormData(form, images = {}) {
-  const body = new FormData();
-
-  body.append("profession", form.profession);
-  body.append("bio", form.bio);
-  body.append("phone", form.phone);
-  if (form.dob) body.append("dob", form.dob);
-  if (form.gender) body.append("gender", form.gender);
-  body.append("address", JSON.stringify(form.address));
-  body.append("socialLinks", JSON.stringify(form.socialLinks));
-
-  if (images.avatar) body.append("avatar", images.avatar, "avatar.jpg");
-  if (images.cover) body.append("coverImage", images.cover, "cover.jpg");
-
-  return body;
+export function profilePayload(form) {
+  return {
+    profession: form.profession,
+    bio: form.bio,
+    phone: form.phone,
+    ...(form.dob ? { dob: form.dob } : {}),
+    ...(form.gender ? { gender: form.gender } : {}),
+    address: form.address,
+    socialLinks: form.socialLinks,
+  };
 }

@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 
 import { useAuth } from "../../context/AuthContext";
+import { config } from "../../config";
 import { apiError } from "../../utils/helpers";
 import AuthShell from "../../components/auth/AuthShell";
 import AuthFooter from "../../components/auth/AuthFooter";
@@ -105,7 +106,11 @@ export default function LoginPage() {
         </Button>
       </form>
 
-      <AuthFooter prompt="New to Lifebookz?" linkLabel="Create your account" to="/register" />
+      <AuthFooter
+        prompt="New to Lifebookz?"
+        linkLabel="Create your account"
+        to={config.readerSignupUrl || "/"}
+      />
     </AuthShell>
   );
 }

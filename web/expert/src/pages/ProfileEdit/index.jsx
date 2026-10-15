@@ -7,38 +7,43 @@ import Input from "../../components/ui/Input";
 import Textarea from "../../components/ui/Textarea";
 import ImageCropper from "../../components/common/ImageCropper";
 import { Icons } from "../../icons";
+import { uploadImage } from "../../utils/uploads";
+import api from "../../config/api";
 
-/** Build a multipart body containing only the fields being changed. */
-function buildProfileFormData({ fullName, expertise, qualification, bio, phone, experience, price, languages, categories, avatarFile, coverFile }) {
-  const fd = new FormData();
-
-  if (fullName !== undefined) fd.append("fullName", fullName);
-  if (expertise !== undefined) fd.append("expertise", expertise);
-  if (qualification !== undefined) fd.append("qualification", qualification);
-  if (bio !== undefined) fd.append("bio", bio);
-  if (phone !== undefined) fd.append("phone", phone);
-  if (experience !== undefined) {
-    fd.append("experience", String(Math.max(0, Number(experience) || 0)));
-  }
-  if (price !== undefined) {
-    fd.append("price", String(Math.max(0, Number(price) || 0)));
-  }
-  if (languages !== undefined) {
-    fd.append(
-      "languages",
-      JSON.stringify(
-        languages
-          .split(",")
-          .map((l) => l.trim())
-          .filter(Boolean),
-      ),
-    );
-  }
-  if (categories !== undefined) fd.append("categories", JSON.stringify(categories));
-  if (avatarFile) fd.append("avatar", avatarFile, "avatar.jpg");
-  if (coverFile) fd.append("coverImage", coverFile, "cover.jpg");
-
-  return fd;
+/** JSON body carrying only the fields being changed. */
+function buildProfilePayload({
+  fullName,
+  expertise,
+  qualification,
+  bio,
+  phone,
+  experience,
+  price,
+  languages,
+  categories,
+}) {
+  return {
+    ...(fullName !== undefined ? { fullName } : {}),
+    ...(expertise !== undefined ? { expertise } : {}),
+    ...(qualification !== undefined ? { qualification } : {}),
+    ...(bio !== undefined ? { bio } : {}),
+    ...(phone !== undefined ? { phone } : {}),
+    ...(experience !== undefined
+      ? { experience: Math.max(0, Number(experience) || 0) }
+      : {}),
+    ...(price !== undefined
+      ? { price: Math.max(0, Number(price) || 0) }
+      : {}),
+    ...(languages !== undefined
+      ? {
+          languages: languages
+            .split(",")
+            .map((l) => l.trim())
+            .filter(Boolean),
+        }
+      : {}),
+    ...(categories !== undefined ? { categories } : {}),
+  };
 }
 
 /**
@@ -47,7 +52,17 @@ function buildProfileFormData({ fullName, expertise, qualification, bio, phone, 
  * same instant-save flow the client portal uses.
  */
 export default function ProfileEdit() {
-  const { expert, updateProfile } = useAuth();
+  const { expert, updateProfile, reloadProfile, upgradeToExpert } = useAuth();
+
+  // user/author accounts on this portal treat the page as an expert
+  // application — the whole form submits to POST /experts/upgrade.
+  // Roles-aware: an upgraded account that also stays an author keeps the
+  // expert capability in `roles`, so it still edits as a full expert here.
+  const isApplication = Boolean(
+    expert &&
+      expert.role !== "expert" &&
+      !(Array.isArray(expert.roles) && expert.roles.includes("expert")),
+  );
 
   const [form, setForm] = useState({
     fullName: expert?.fullName || "",
@@ -132,11 +147,25 @@ export default function ProfileEdit() {
 
     setUploading(kind);
     try {
-      await updateProfile(
-        buildProfileFormData(
-          kind === "avatar" ? { avatarFile: blob } : { coverFile: blob },
-        ),
-      );
+      // Upload the cropped image straight to R2, then hand only its
+      // { url, key } descriptor to a profile endpoint.
+      const imageRef = await uploadImage(blob, kind);
+
+      if (isApplication) {
+        // The account isn't an expert yet, so PATCH /experts/me would be a
+        // 403 — the shared account profile (avatar + cover) saves instantly
+        // through the reader profile endpoint instead.
+        await api.patch(
+          "/users/me",
+          kind === "avatar" ? { avatar: imageRef } : { coverImage: imageRef },
+        );
+        await reloadProfile();
+      } else {
+        await updateProfile(
+          kind === "avatar" ? { avatar: imageRef } : { coverImage: imageRef },
+        );
+      }
+
       toast.success(
         kind === "avatar" ? "Profile photo updated." : "Cover image updated.",
       );
@@ -169,8 +198,15 @@ export default function ProfileEdit() {
 
     setSaving(true);
     try {
-      await updateProfile(buildProfileFormData(form));
-      toast.success("Profile updated.");
+      const payload = buildProfilePayload(form);
+
+      if (isApplication) {
+        await upgradeToExpert(payload);
+        toast.success("Expert application submitted — pending verification.");
+      } else {
+        await updateProfile(payload);
+        toast.success("Profile updated.");
+      }
     } catch (err) {
       toast.error(
         err.response?.data?.error?.message || "Failed to update profile.",
@@ -197,8 +233,15 @@ export default function ProfileEdit() {
 
         <div className="space-y-2">
           <h1 className="font-display text-2xl font-extrabold tracking-tight text-primary sm:text-3xl">
-            Edit Profile
+            {isApplication ? "Become an Expert" : "Edit Profile"}
           </h1>
+          {isApplication && (
+            <p className="text-sm text-muted-foreground">
+              You're signed in as a {"reader"} account. Complete your
+              professional details to start taking consultancy sessions — your
+              application goes for verification once submitted.
+            </p>
+          )}
         </div>
 
         {/* Identity card, live — camera buttons open the pickers below */}
@@ -341,7 +384,7 @@ export default function ProfileEdit() {
                   icon={<Icons.clock className="h-4 w-4" />}
                 />
                 <Input
-                  label="Session price (USD)"
+                  label="Session price (₹)"
                   type="number"
                   min="0"
                   value={form.price}

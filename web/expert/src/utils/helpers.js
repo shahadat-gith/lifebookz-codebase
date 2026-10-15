@@ -9,19 +9,6 @@ export function apiError(error, fallback = "Something went wrong. Please try aga
   return { message: payload?.message || fallback, fields: payload?.fields || {} };
 }
 
-/**
- * Sanitize a raw string into a valid expert username.
- * Rules: lowercase, a-z/0-9/./-/_ only, no leading/trailing separators, max 30.
- */
-export function sanitizeUsername(raw) {
-  if (!raw) return "";
-  return raw
-    .toLowerCase()
-    .replace(/[^a-z0-9_.-]/g, "")
-    .replace(/^[._-]+|[._-]+$/g, "")
-    .slice(0, 30);
-}
-
 export function formatDate(value, options) {
   if (!value) return "—";
   const date = new Date(value);

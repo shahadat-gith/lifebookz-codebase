@@ -26,7 +26,7 @@ const consultationMock = {
   distinct: jest.fn(),
 };
 
-const expertMock = {
+const userMock = {
   find: jest.fn(),
   findOne: jest.fn(),
   findById: jest.fn(),
@@ -39,8 +39,8 @@ await jest.unstable_mockModule("../src/models/Consultation.js", () => ({
   PAYABLE_STATUSES: ["CONFIRMED"],
 }));
 
-await jest.unstable_mockModule("../src/models/Expert.js", () => ({
-  default: expertMock,
+await jest.unstable_mockModule("../src/models/User.js", () => ({
+  default: userMock,
 }));
 
 await jest.unstable_mockModule("../src/services/logger.service.js", () => ({
@@ -119,7 +119,7 @@ const consultService = await import("../src/services/consultations.service.js");
 // Session functions live in consult.service since the Chime migration.
 const sessionService = consultService;
 const { default: Consultation } = await import("../src/models/Consultation.js");
-const { default: Expert } = await import("../src/models/Expert.js");
+const { default: Expert } = await import("../src/models/User.js");
 
 const expectAppError = (error, code) => {
   expect(error).toBeTruthy();
@@ -141,6 +141,8 @@ function chain(result) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+
+  // The Expert alias below now points at the unified User model.
 
   // Sensible defaults so sweeps and lists never explode on undefined.
   consultationMock.updateMany.mockResolvedValue({ modifiedCount: 0 });
@@ -179,8 +181,8 @@ describe("matchExperts", () => {
     consultationMock.find.mockReturnValue(chain(["e2"]));
     Expert.find.mockReturnValue(
       chain([
-        { _id: "e1", fullName: "Low Rated", rating: 3.2 },
-        { _id: "e3", fullName: "Top Rated", rating: 4.9 },
+        { _id: "e1", fullName: "Low Rated", expert: { rating: 3.2 } },
+        { _id: "e3", fullName: "Top Rated", expert: { rating: 4.9 } },
       ]),
     );
 
@@ -193,8 +195,8 @@ describe("matchExperts", () => {
     expect(Consultation.find).toHaveBeenCalledWith({ status: { $in: ["IN_PROGRESS"] } });
     const query = Expert.find.mock.calls[0][0];
     expect(query._id).toEqual({ $nin: ["e2"] });
-    expect(query.categories).toBe("career");
-    expect(query["verification.status"]).toBe("approved");
+    expect(query["expert.categories"]).toBe("career");
+    expect(query["expert.verification.status"]).toBe("approved");
 
     expect(result.experts.map((e) => e._id)).toEqual(["e3", "e1"]);
     expect(result.matched).toBe(false);
@@ -207,7 +209,7 @@ describe("matchExperts", () => {
 
 describe("createConsultation", () => {
   const user = { id: "u1", fullName: "Test User", email: "u@test.com" };
-  const expertDoc = { _id: "e1", id: "e1", fullName: "Dr Expert", email: "e@test.com", price: 500 };
+  const expertDoc = { _id: "e1", id: "e1", fullName: "Dr Expert", email: "e@test.com", expert: { price: 500 } };
 
   test("rejects a too-short problem", async () => {
     await expect(
@@ -261,7 +263,7 @@ describe("acceptConsultation", () => {
   const expertId = "e1";
   const consultationId = "c1";
 
-  const expertDoc = { _id: expertId, id: expertId, fullName: "Dr Expert", price: 500 };
+  const expertDoc = { _id: expertId, id: expertId, fullName: "Dr Expert", expert: { price: 500 } };
   const pendingDoc = {
     _id: consultationId, id: consultationId, status: "PENDING",
     amount: 50000, userEmail: "u@test.com", userName: "Test User",
@@ -325,7 +327,9 @@ describe("acceptConsultation", () => {
   });
 
   test("a free expert confirms with payment already settled", async () => {
-    Expert.findById.mockReturnValue(chain({ ...expertDoc, price: 0 }));
+    Expert.findById.mockReturnValue(
+      chain({ ...expertDoc, expert: { price: 0 } }),
+    );
     Consultation.findOneAndUpdate.mockResolvedValue({ ...pendingDoc, status: "CONFIRMED" });
     Consultation.countDocuments.mockResolvedValue(0);
 
@@ -628,7 +632,7 @@ describe("endSession", () => {
     expect(result.status).toBe("COMPLETED");
     expect(Expert.updateOne).toHaveBeenCalledWith(
       { _id: "e1" },
-      { $inc: { sessions: 1 } },
+      { $inc: { "expert.sessions": 1 } },
     );
     // The AWS meeting is deleted and the user is invited to review.
     expect(mailMocks.status).toHaveBeenCalledWith(
@@ -732,7 +736,7 @@ describe("rateConsultation", () => {
     );
     expect(Expert.updateOne).toHaveBeenCalledWith(
       { _id: "e1" },
-      { $set: { rating: 4.5, ratingCount: 2 } },
+      { $set: { "expert.rating": 4.5, "expert.ratingCount": 2 } },
     );
     expect(result.rating.score).toBe(5);
   });

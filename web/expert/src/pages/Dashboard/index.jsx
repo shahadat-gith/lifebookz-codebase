@@ -57,12 +57,27 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { expert, isLoading: authLoading, setAvailability: persistAvailability } = useAuth();
 
+  /**
+   * Whether the signed-in account actually IS an expert. Accounts logged in
+   * to apply (role user/author) must not hit the expert-only endpoints —
+   * consultations list, realtime socket, availability — until they upgrade.
+   * Upgraded multi-role accounts carry "expert" inside `roles`.
+   */
+  const isExpert = Boolean(
+    expert &&
+      (expert.role === "expert" ||
+        (Array.isArray(expert.roles) && expert.roles.includes("expert"))),
+  );
+
   const [consultations, setConsultations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [togglingAvailability, setTogglingAvailability] = useState(false);
   const [filter, setFilter] = useState("all");
   const [newRequestPulse, setNewRequestPulse] = useState(false);
+  // Shown once when an account from another portal (role user/author) opens
+  // the expert workspace — invite them to apply, dismissible.
+  const [upgradeModalDismissed, setUpgradeModalDismissed] = useState(false);
 
   // --- Limited fetching: latest PAGE_SIZE records, "Show more" appends 10
   const PAGE_SIZE = 10;
@@ -92,9 +107,13 @@ export default function Dashboard() {
   }, [expert, authLoading, navigate]);
 
   useEffect(() => {
-    if (!expert) return;
+    // Expert-only data — an applicant's dashboard shows nothing to load.
+    if (!expert || !isExpert) {
+      setLoading(false);
+      return;
+    }
     loadConsultations();
-  }, [expert, loadConsultations]);
+  }, [expert, isExpert, loadConsultations]);
 
   // --- Realtime (AWS API Gateway WebSocket) -------------------------------
   // One shared socket per dashboard session. Any consultation event for this
@@ -125,7 +144,7 @@ export default function Dashboard() {
       setTimeout(() => setNewRequestPulse(false), 6000);
     }
     refreshFromEvent();
-  }, expertId);
+  }, isExpert ? expertId : null);
 
   // After every successful list load, make sure the socket is subscribed to
   // each visible consultation id — the same routing path the client's
@@ -133,22 +152,22 @@ export default function Dashboard() {
   // frames even if the backend's expertId routing isn't wired up yet.
   const lastSubscribedRef = useRef("");
   useEffect(() => {
-    if (loading) return;
+    if (loading || !isExpert) return;
     const signature = consultations.map((c) => c._id || c.id).join(",");
     if (signature === lastSubscribedRef.current) return;
     lastSubscribedRef.current = signature;
     consultations.forEach((c) => subscribe(c._id || c.id));
-  }, [consultations, loading, subscribe]);
+  }, [consultations, loading, isExpert, subscribe]);
 
   // Safety net: refetch every 30s while the tab is visible, so the list
   // stays correct even if the socket drops or the backend skips a frame.
   useEffect(() => {
-    if (!expertId) return undefined;
+    if (!expertId || !isExpert) return undefined;
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") refreshFromEvent();
     }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [expertId, refreshFromEvent]);
+  }, [expertId, isExpert, refreshFromEvent]);
 
   /**
    * "Show more" — reveal 10 more of what we already fetched; when that runs
@@ -291,6 +310,8 @@ export default function Dashboard() {
 
   if (!expert) return null;
 
+  const isApplyingExpert = !isExpert;
+
   const stat = [
     { label: "Total requests", value: stats.total },
     { label: "Awaiting your reply", value: stats.pending, highlight: stats.pending > 0 },
@@ -300,18 +321,48 @@ export default function Dashboard() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 px-4 py-8 sm:py-10">
+      {/* Invite to become an expert — any account can open this portal */}
+      {isApplyingExpert && !upgradeModalDismissed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-lg">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Icons.category className="h-6 w-6" />
+            </div>
+            <h2 className="mt-4 font-display text-lg font-bold text-foreground">
+              Do you want to take consultancy sessions?
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Your signed-in account isn't an expert yet. Complete your expert
+              profile to start appearing in client searches and receive live
+              session requests.
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-center">
+              <button
+                type="button"
+                onClick={() => setUpgradeModalDismissed(true)}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                Not now
+              </button>
+              <Button onClick={() => navigate("/profile/edit")}>
+                Complete my expert profile
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header: title + single Availability control */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h1 className="font-display text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
             Session requests
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Live view — new requests appear here automatically.
-          </p>
+         
         </div>
 
         {/* Availability — the one master control for new requests */}
+        {!isApplyingExpert && (
         <button
           type="button"
           aria-pressed={isAvailable}
@@ -336,10 +387,24 @@ export default function Dashboard() {
               ? "Available — accepting new sessions"
               : "Unavailable — tap to accept sessions"}
         </button>
+        )}
       </div>
 
-      {/* Verification notice — shown until approved */}
-      {!isApproved && (
+      {/* Verification notice — shown until approved; applicants get a CTA */}
+      {isApplyingExpert ? (
+        <div className="flex flex-col items-start gap-3 rounded-lg border border-warning/20 bg-warning/5 px-4 py-3 text-sm text-warning sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <Icons.infoCircle className="mt-0.5 size-4 shrink-0" />
+            <div className="text-[13px] leading-relaxed">
+              <span className="font-semibold">You're browsing as a “Expert” account.</span> Build your
+              expert profile to unlock session requests.
+            </div>
+          </div>
+          <Button variant="secondary" onClick={() => navigate("/profile/edit")}>
+            Complete expert profile
+          </Button>
+        </div>
+      ) : !isApproved && (
         <div
           className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${
             isRejected

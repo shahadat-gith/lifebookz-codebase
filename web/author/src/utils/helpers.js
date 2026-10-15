@@ -106,19 +106,3 @@ export function formatLikesCaption(recentLikers, totalLikes) {
   return `Liked by ${firstName} and ${others} other${others === 1 ? "" : "s"}`;
 }
 
-/**
- * Sanitize a raw string into a valid author username.
- * Rules:
- * - Lowercase only
- * - Only a-z, 0-9, dots, hyphens, underscores allowed
- * - No leading/trailing special characters
- * - Max 30 characters
- */
-export function sanitizeUsername(raw) {
-  if (!raw) return "";
-  return raw
-    .toLowerCase()
-    .replace(/[^a-z0-9_.-]/g, "")
-    .replace(/^[._-]+|[._-]+$/g, "")
-    .slice(0, 30);
-}

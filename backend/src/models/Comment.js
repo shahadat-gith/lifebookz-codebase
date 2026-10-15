@@ -12,7 +12,7 @@ const replySchema = new mongoose.Schema(
   {
     author: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Author",
+      ref: "User",
       required: true,
     },
 
@@ -36,21 +36,15 @@ const commentSchema = new mongoose.Schema(
     },
 
     /**
-     * The account that wrote the comment. `userModel` names its collection
-     * (readers, authors and experts can all comment) and drives `refPath`,
-     * so a plain populate returns the account's *current* name and avatar.
+     * The account that wrote the comment. Every account — reader, author
+     * and expert — lives in the same users collection, so a plain populate
+     * returns the account's *current* name and avatar.
      */
     user: {
       type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
       required: true,
       index: true,
-      refPath: "userModel",
-    },
-
-    userModel: {
-      type: String,
-      enum: ["User", "Author", "Expert"],
-      default: "User",
     },
 
     content: {
@@ -67,18 +61,12 @@ const commentSchema = new mongoose.Schema(
 
     /**
      * Anyone signed in (user, author or expert) can like a comment.
-     * `whoModel` distinguishes the account type; `who` alone drives the
-     * liked/not-liked check for the viewer. Names are never copied here —
-     * only the count is shown.
+     * Only the count is shown; `who` alone drives the liked/not-liked
+     * check for the viewer.
      */
     likes: [
       {
         who: { type: mongoose.Schema.Types.ObjectId, required: true },
-        whoModel: {
-          type: String,
-          enum: ["User", "Author", "Expert"],
-          default: "User",
-        },
         createdAt: { type: Date, default: Date.now },
       },
     ],

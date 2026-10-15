@@ -30,7 +30,7 @@ async function uploadViaPresign(file, onStage) {
 
   // 1. Presigned URL from the API
   onStage?.("Preparing upload…");
-  const presignRes = await api.post("/stories/media/presign", {
+  const presignRes = await api.post("/uploads/presign", {
     contentType,
     kind,
     size: file.size,
@@ -100,9 +100,9 @@ export default function AddMediaStep({
 
   function removeMedia(idx) {
     const item = media[idx];
-    // Best-effort cleanup of the R2 object
+    // Best-effort cleanup of the R2 object via the unified uploads route
     if (item?.key) {
-      api.delete("/stories/media", { data: { key: item.key } }).catch(() => {});
+      api.delete("/uploads", { data: { key: item.key } }).catch(() => {});
     }
     onChange({ ...story, media: media.filter((_, i) => i !== idx) });
   }

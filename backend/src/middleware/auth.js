@@ -2,27 +2,14 @@ import jwt from "jsonwebtoken";
 import config from "../config/index.js";
 
 import User from "../models/User.js";
-import Author from "../models/Author.js";
-import Expert from "../models/Expert.js";
 
 import { authenticationError, authorizationError } from "../utils/errors.js";
-
-/**
- * One table drives every token lookup, so a token can never resolve to the
- * wrong account type.
- */
-const ACCOUNT_ROLES = {
-  user: { model: User, claim: "userId", label: "User" },
-  author: { model: Author, claim: "authorId", label: "Author" },
-  expert: { model: Expert, claim: "expertId", label: "Expert" },
-};
 
 function extractToken(req) {
   const auth = req.headers.authorization;
   if (auth?.startsWith("Bearer ")) return auth.slice(7);
   return null;
 }
-
 
 function verifyToken(token) {
   try {
@@ -34,45 +21,20 @@ function verifyToken(token) {
 }
 
 /**
- * Load the account behind a token and reject it when the account is gone or
- * no longer usable.
- */
-async function loadAccount(role, decoded) {
-  const { model, claim, label } = ACCOUNT_ROLES[role];
-  const id = decoded[claim];
-
-  if (!id) {
-    throw authenticationError("Invalid token.");
-  }
-
-  const account = await model.findById(id).select("-auth.passwordHash");
-
-  if (!account) {
-    throw authenticationError(`${label} account no longer exists.`);
-  }
-
-  // Accounts created before the `status` field existed are treated as active.
-  if (account.status && account.status !== "active") {
-    throw authenticationError(
-      "This account is not active. Please contact support.",
-    );
-  }
-
-  return account;
-}
-
-/**
  * Authentication — verifies the bearer token, then attaches the caller's
- * account to `req.user` and its role to `req.role`.
+ * user (from the single user table) to `req.user` and its role to `req.role`.
+ *
+ * Every account type — user, author and expert — lives in the same users
+ * collection, so one lookup serves all three and a token can never resolve
+ * to the wrong table.
  *
  * Layering rule for every route:
  *   authenticate     → who are you?      (valid token, existing account)
  *   authorize(...)   → are you allowed?  (role gate, must come after)
- *   requireApproved  → are you verified? (author/expert application state)
+ *   requireProfileComplete → author publishing gate
  *
- * Verification status is deliberately NOT checked here: a pending author or
- * expert still has to read their own profile and application state. Routes
- * that must only serve approved accounts add `requireApproved`.
+ * The role always comes from the database — a token minted before an
+ * upgrade is never allowed to keep stale permissions.
  */
 export async function authenticate(req, _res, next) {
   try {
@@ -84,8 +46,6 @@ export async function authenticate(req, _res, next) {
 
     const decoded = verifyToken(token);
 
-    req.role = decoded.role;
-
     switch (decoded.role) {
       case "admin": {
         if (!config.admin.key || decoded.key !== config.admin.key) {
@@ -93,6 +53,7 @@ export async function authenticate(req, _res, next) {
         }
 
         req.admin = true;
+        req.role = "admin";
 
         return next();
       }
@@ -105,6 +66,7 @@ export async function authenticate(req, _res, next) {
         }
 
         req.developer = true;
+        req.role = "developer";
 
         return next();
       }
@@ -112,7 +74,30 @@ export async function authenticate(req, _res, next) {
       case "user":
       case "author":
       case "expert": {
-        req.user = await loadAccount(decoded.role, decoded);
+        if (!decoded.userId) {
+          throw authenticationError("Invalid token.");
+        }
+
+        const user = await User.findById(decoded.userId).select(
+          "-auth.passwordHash",
+        );
+
+        if (!user) {
+          throw authenticationError("Account no longer exists.");
+        }
+
+        // Accounts created before the `status` field existed are treated as active.
+        if (user.status && user.status !== "active") {
+          throw authenticationError(
+            "This account is not active. Please contact support.",
+          );
+        }
+
+        req.user = user;
+        req.role = user.role;
+        req.roles = Array.isArray(user.roles) && user.roles.length > 0
+          ? user.roles
+          : [user.role];
 
         return next();
       }
@@ -141,9 +126,18 @@ export async function optionalAuthenticate(req, _res, next) {
   try {
     const decoded = verifyToken(token);
 
-    if (ACCOUNT_ROLES[decoded.role]) {
-      req.user = await loadAccount(decoded.role, decoded);
-      req.role = decoded.role;
+    if (["user", "author", "expert"].includes(decoded.role)) {
+      const user = await User.findById(decoded.userId).select(
+        "-auth.passwordHash",
+      );
+
+      if (user && (!user.status || user.status === "active")) {
+        req.user = user;
+        req.role = user.role;
+        req.roles = Array.isArray(user.roles) && user.roles.length > 0
+          ? user.roles
+          : [user.role];
+      }
     }
   } catch {
     // Treated as an anonymous reader.
@@ -154,11 +148,20 @@ export async function optionalAuthenticate(req, _res, next) {
 
 /**
  * Role gate. Must run after `authenticate`, which sets `req.role`.
- * Rejects anyone whose role isn't in the allowed list with a 403.
+ * One account can hold several roles (reader + author + expert), so the
+ * gate passes when ANY of the account's roles is allowed — the primary
+ * `role` is always one of them.
  */
 export function authorize(...roles) {
   return function authorizeRole(req, _res, next) {
-    if (!req.role || !roles.includes(req.role)) {
+    const heldRoles =
+      Array.isArray(req.roles) && req.roles.length > 0
+        ? req.roles
+        : req.role
+          ? [req.role]
+          : [];
+
+    if (!heldRoles.some((role) => roles.includes(role))) {
       return next(
         authorizationError("You do not have permission to perform this action."),
       );
@@ -174,7 +177,7 @@ export function authorize(...roles) {
  * uploads and drafts are available without completing the profile.
  */
 export function requireProfileComplete(req, _res, next) {
-  if (req.user?.isProfileCompleted) {
+  if (req.user?.author?.isProfileCompleted) {
     return next();
   }
 

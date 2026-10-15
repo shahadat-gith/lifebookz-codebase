@@ -166,7 +166,7 @@ export default function Profile() {
           <StatTile
             icon={Icons.money}
             label="Session price"
-            value={expert.price > 0 ? `$${expert.price}` : "—"}
+            value={expert.price > 0 ? `Rs. ${expert.price}` : "—"}
             hint="Per session"
           />
           <StatTile

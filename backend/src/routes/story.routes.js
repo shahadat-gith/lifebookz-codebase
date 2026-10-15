@@ -1,6 +1,5 @@
 import { Router } from "express";
 
-import upload from "../middleware/multer.js";
 import {
   authenticate,
   authorize,
@@ -8,7 +7,6 @@ import {
   requireProfileComplete,
 } from "../middleware/auth.js";
 import * as story from "../controllers/story.controller.js";
-import * as media from "../controllers/story.media.controller.js";
 
 const router = Router();
 
@@ -20,19 +18,10 @@ const authorOnly = [authenticate, authorize("author")];
 // story are reader actions, and authors read each other's lifebooks too.
 const anyAccount = [authenticate, authorize("user", "author", "expert")];
 
-router.post(
-  "/",
-  authorOnly,
-  upload.single("bannerImage"),
-  story.create,
-);
-
-// Issue a presigned PUT URL — the client uploads the file straight to R2.
-// Available to every signed-in author, no profile completion needed.
-router.post("/media/presign", authorOnly, media.presignMediaUpload);
-
-// Remove an uploaded object from R2
-router.delete("/media", authorOnly, media.deleteMedia);
+// File bytes never reach this server — every upload (banner, story media,
+// avatars, covers) is uploaded straight to R2 via a presigned URL, and only
+// the resulting { url, key } pair travels in the JSON body.
+router.post("/", authorOnly, story.create);
 
 // Reading is public — anyone can browse the feed and read published stories.
 // Optional auth personalises them for a signed-in caller (liked)
@@ -45,12 +34,7 @@ router.get("/professions", story.getProfessions);
 router.get("/drafts", authorOnly, story.getDrafts);
 
 router.get("/:storyId", optionalAuthenticate, story.getStory);
-router.patch(
-  "/:storyId",
-  authorOnly,
-  upload.single("bannerImage"),
-  story.update,
-);
+router.patch("/:storyId", authorOnly, story.update);
 
 // Full author control — delete any time, even after publish
 router.delete("/:storyId", authorOnly, story.remove);

@@ -1,9 +1,7 @@
-import crypto from "crypto";
-
 import User from "../models/User.js";
+
 import {
   generateToken,
-  hashPassword,
   verifyPassword,
 } from "../utils/helpers.js";
 import {
@@ -12,55 +10,21 @@ import {
   notFoundError,
   validationError,
 } from "../utils/errors.js";
-import {
-  findAccountRolesByEmail,
-  noAccountMessage,
-} from "./accounts.service.js";
-import { sendWelcomeMail, sendOtpMail } from "./mailer.service.js";
+import { sendWelcomeMail } from "./mailer.service.js";
 import { logger } from "./logger.service.js";
-import {
-  uploadAvatar,
-  replaceImage,
-  deleteFile,
-} from "./upload.service.js";
+import { deleteFile } from "./upload.service.js";
 
-const RESET_SELECT =
-  "+auth.passwordResetOTP +auth.passwordResetOTPExpires +auth.passwordResetVerified";
-
-const OTP_TTL_MS = 10 * 60 * 1000;
-const RESET_TOKEN_TTL_MS = 5 * 60 * 1000;
+// One user table, one token shape for every account type.
+export function accountToken(user, role) {
+  return generateToken({ role, userId: user.id });
+}
 
 /**
- * Builds a unique username from an email local part.
- *
- * Exported so the backfill script can repair documents created before
- * `username` was required, using exactly the same rules.
+ * Registration accepts only name, email and password — avatar/cover are
+ * chosen from the dashboard later via presigned uploads, so account
+ * creation needs no file handling at all.
  */
-export async function buildUniqueUsername(email) {
-  let username = String(email || "")
-    .split("@")[0]
-    .toLowerCase()
-    .replace(/[^a-z0-9_]/g, "")
-    .slice(0, 30);
-
-  if (username.length < 3) username = "user";
-
-  let suffix = 0;
-  let finalUsername = username;
-
-  while (await User.exists({ username: finalUsername })) {
-    suffix++;
-    finalUsername = `${username}_${suffix}`.slice(0, 30);
-  }
-
-  return finalUsername;
-}
-
-function userToken(user) {
-  return generateToken({ role: "user", userId: user.id });
-}
-
-export async function registerUser({ email, password, fullName, file }) {
+export async function registerUser({ email, password, fullName }) {
   if (!email || !password || !fullName) {
     throw validationError("Email, password, and full name are required.");
   }
@@ -73,41 +37,27 @@ export async function registerUser({ email, password, fullName, file }) {
     throw conflictError(message, { email: message });
   }
 
-  const username = await buildUniqueUsername(email);
-
-  let avatar = { url: "", key: "" };
-
-  if (file) {
-    const uploaded = await uploadAvatar(file.buffer, file.mimetype, "user");
-    avatar = { url: uploaded.url, key: uploaded.key };
-  }
-
   const user = await User.create({
     email,
-    username,
     auth: { passwordHash: password },
     fullName,
-    avatar,
   });
 
   sendWelcomeMail({ to: user.email, name: user.fullName, role: "user" });
 
-  return { user, token: userToken(user) };
+  return { user, token: accountToken(user, "user") };
 }
 
 export async function loginUser({ email, password, ip }) {
   const user = await User.findOne({ email }).select("+auth.passwordHash");
 
   if (!user) {
-    const accountRoles = await findAccountRolesByEmail(email);
-
-    await logger.warn("Reader login failed — no reader account for this email", {
+    await logger.warn("Login failed — no account for this email", {
       email,
-      accountRoles,
       ip,
     });
 
-    const message = noAccountMessage(accountRoles, "user");
+    const message = "No account found with this email.";
 
     throw authenticationError(message, { email: message });
   }
@@ -115,7 +65,7 @@ export async function loginUser({ email, password, ip }) {
   const isValid = await verifyPassword(password, user.auth.passwordHash);
 
   if (!isValid) {
-    await logger.warn("Reader login failed — incorrect password", {
+    await logger.warn("Login failed — incorrect password", {
       userId: user.id,
       email,
       ip,
@@ -126,7 +76,7 @@ export async function loginUser({ email, password, ip }) {
     throw authenticationError(message, { password: message });
   }
 
-  return { user, token: userToken(user) };
+  return { user, token: accountToken(user, user.role) };
 }
 
 export async function getUserById(userId) {
@@ -143,7 +93,7 @@ export async function getUserById(userId) {
   return user;
 }
 
-export async function updateUser({ userId, fullName, file, coverFile }) {
+export async function updateUser({ userId, fullName, avatar, coverImage }) {
   const user = await getUserById(userId);
 
   // Multipart forms can deliver missing fields as empty strings or the
@@ -157,28 +107,26 @@ export async function updateUser({ userId, fullName, file, coverFile }) {
     user.fullName = fullName.trim();
   }
 
-  if (file) {
-    user.avatar = await replaceImage({
-      buffer: file.buffer,
-      contentType: file.mimetype,
-      role: "user",
-      kind: "avatar",
-      previousKey: user.avatar?.key,
-    });
+  // Images arrive as presigned { url, key } uploads from the dashboard.
+  const replacedKeys = [];
+
+  if (avatar !== undefined) {
+    replacedKeys.push(user.avatar?.key);
+    user.avatar = avatar;
   }
 
   // Single 16:9 cover used on every screen size
-  if (coverFile) {
-    user.coverImage = await replaceImage({
-      buffer: coverFile.buffer,
-      contentType: coverFile.mimetype,
-      role: "user",
-      kind: "cover",
-      previousKey: user.coverImage?.key,
-    });
+  if (coverImage !== undefined) {
+    replacedKeys.push(user.coverImage?.key);
+    user.coverImage = coverImage;
   }
 
   await user.save();
+
+  // Replaced images are only removed once the new ones are committed.
+  await Promise.all(
+    replacedKeys.filter(Boolean).map((key) => deleteFile(key).catch(() => {})),
+  );
 
   return user;
 }
@@ -195,118 +143,12 @@ export async function deleteUser({ userId }) {
 
 export async function getPublicProfile(userId) {
   const user = await User.findById(userId)
-    .select("fullName avatar coverImage createdAt")
+    .select("fullName avatar coverImage createdAt role")
     .lean();
 
   if (!user) {
     throw notFoundError("User not found.");
   }
 
-  // `lean()` skips schema virtuals, so the role is added explicitly.
-  return { ...user, role: "user" };
-}
-
-export async function requestPasswordReset({ email }) {
-  if (!email) {
-    throw validationError("Email is required.");
-  }
-
-  // Always resolve silently to avoid revealing whether the email exists
-  const user = await User.findOne({ email }).select("email");
-
-  if (!user) return;
-
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-  // Targeted write on purpose. Resetting a password only touches `auth`, so it
-  // must not re-validate the rest of the profile — a document predating a
-  // `required` field would otherwise be locked out of its own reset.
-  await User.updateOne(
-    { _id: user._id },
-    {
-      $set: {
-        "auth.passwordResetOTP": otp,
-        "auth.passwordResetOTPExpires": new Date(Date.now() + OTP_TTL_MS),
-        "auth.passwordResetVerified": false,
-      },
-    },
-  );
-
-  await sendOtpMail({ to: user.email, otp, role: "user" });
-}
-
-export async function verifyPasswordResetOTP({ email, otp }) {
-  if (!email || !otp) {
-    throw validationError("Email and OTP are required.");
-  }
-
-  const user = await User.findOne({ email }).select(`email ${RESET_SELECT}`);
-
-  if (
-    !user ||
-    user.auth.passwordResetOTP !== otp ||
-    !user.auth.passwordResetOTPExpires ||
-    user.auth.passwordResetOTPExpires < new Date()
-  ) {
-    throw validationError("Invalid or expired OTP.");
-  }
-
-  // Verified marks that the reset token — not the OTP — is the credential the
-  // next step accepts, so the short-lived token replaces the OTP here.
-  const resetToken = crypto.randomBytes(32).toString("hex");
-
-  await User.updateOne(
-    { _id: user._id },
-    {
-      $set: {
-        "auth.passwordResetVerified": true,
-        "auth.passwordResetOTP": resetToken,
-        "auth.passwordResetOTPExpires": new Date(
-          Date.now() + RESET_TOKEN_TTL_MS,
-        ),
-      },
-    },
-  );
-
-  return resetToken;
-}
-
-export async function resetPassword({ resetToken, password }) {
-  if (!resetToken || !password) {
-    throw validationError("Reset token and new password are required.");
-  }
-
-  if (password.length < 8) {
-    throw validationError("Password must be at least 8 characters.");
-  }
-
-  // Hashing happens here because the write below is a targeted update, so the
-  // model's pre-save hook never runs.
-  const passwordHash = await hashPassword(password);
-
-  // One atomic write: match on the token, swap in the hash and drop the token.
-  // Two concurrent submissions of the same token cannot both succeed.
-  const result = await User.updateOne(
-    {
-      "auth.passwordResetOTP": resetToken,
-      "auth.passwordResetOTPExpires": { $gt: new Date() },
-      "auth.passwordResetVerified": true,
-    },
-    {
-      $set: {
-        "auth.passwordHash": passwordHash,
-        "auth.passwordResetVerified": false,
-      },
-      $unset: {
-        "auth.passwordResetOTP": "",
-        "auth.passwordResetOTPExpires": "",
-      },
-    },
-  );
-
-  if (result.matchedCount === 0) {
-    throw validationError(
-      "Invalid or expired reset token. Please request a new OTP.",
-    );
-  }
+  return user;
 }

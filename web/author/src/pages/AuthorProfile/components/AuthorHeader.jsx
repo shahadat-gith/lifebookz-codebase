@@ -50,7 +50,6 @@ export default function AuthorHeader({ author }) {
           </h1>
 
           <div className="mt-1 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground sm:justify-start">
-            {author.username && <span>@{author.username}</span>}
             {author.profession && (
               <span className="font-semibold uppercase tracking-wider">
                 {author.profession}

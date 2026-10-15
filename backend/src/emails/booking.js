@@ -1,5 +1,4 @@
-import config from "../config/index.js";
-import { layout, BRAND } from "./layout.js";
+import { layout } from "./layout.js";
 
 /** Sent to the expert when a client books — asks them to confirm or reject. */
 export function bookingRequestedEmail({
@@ -15,12 +14,9 @@ export function bookingRequestedEmail({
       heading: `New request from ${clientName || "a client"}`,
       body: `
         <p style="margin:0">Hi ${expertName || "there"}, a client has requested a consultation with you.</p>
-        <p style="margin:0"><strong style="color:${BRAND.foreground}">What they need help with</strong><br />${problem || "No details provided."}</p>
-        <p style="margin:16px 0 0">Open your dashboard to confirm or reject this booking.</p>
+        <p style="margin:16px 0 0">What they need help with: ${problem || "No details provided."}</p>
+        <p style="margin:16px 0 0">Please open your dashboard to confirm or reject this booking.</p>
       `,
-      cta: config.frontend.expert
-        ? { label: "Open dashboard to review", href: config.frontend.expert }
-        : null,
     }),
   };
 }
@@ -42,11 +38,10 @@ export function bookingStatusEmail({
         preheader: "Your session is confirmed — join the room to start.",
         heading: `Hi ${clientName || "there"}, you're confirmed!`,
         body: `
-          <p style="margin:0"><strong style="color:${BRAND.foreground}">${expertName || "Your expert"}</strong> has confirmed your consultation session.</p>
-          ${amountLabel ? `<p style="margin:12px 0 0">Session fee: <strong style="color:${BRAND.foreground}">${amountLabel}</strong> — you'll complete the payment when you enter the room.</p>` : ""}
-          <p style="margin:12px 0 0">Open the room below. The session starts as soon as you've paid and joined.</p>
+          <p style="margin:0">${expertName || "Your expert"} has confirmed your consultation session.</p>
+          ${amountLabel ? `<p style="margin:12px 0 0">Session fee: ${amountLabel} — you'll complete the payment when you enter the room.</p>` : ""}
+          <p style="margin:12px 0 0">${roomUrl ? `Open the room at: ${roomUrl}. ` : ""}The session starts as soon as you've paid and joined.</p>
         `,
-        cta: roomUrl ? { label: "Join the session room", href: roomUrl } : null,
       }),
     };
   }
@@ -58,12 +53,9 @@ export function bookingStatusEmail({
         preheader: "Your session has ended. Tell us how it went.",
         heading: `Hi ${clientName || "there"}, how was your session?`,
         body: `
-          <p style="margin:0">Your session with <strong style="color:${BRAND.foreground}">${expertName || "your expert"}</strong> has ended.</p>
-          <p style="margin:12px 0 0">Take a moment to rate the session and share your experience — it helps other people choose well and helps your expert grow.</p>
+          <p style="margin:0">Your session with ${expertName || "your expert"} has ended.</p>
+          <p style="margin:12px 0 0">Take a moment to rate the session and share your experience — it helps other people choose well and helps your expert grow.${bookingsUrl ? ` You can rate it at: ${bookingsUrl}.` : ""}</p>
         `,
-        cta: bookingsUrl
-          ? { label: "Rate this session", href: bookingsUrl }
-          : null,
       }),
     };
   }
@@ -75,13 +67,10 @@ export function bookingStatusEmail({
       preheader: "This consultation has been cancelled.",
       heading: `Hi ${clientName || "there"}`,
       body: `
-        <p style="margin:0">Your consultation with <strong style="color:${BRAND.foreground}">${expertName || "your expert"}</strong> has been cancelled.</p>
+        <p style="margin:0">Your consultation with ${expertName || "your expert"} has been cancelled.</p>
         ${reason ? `<p style="margin:12px 0 0">Reason: ${reason}</p>` : ""}
         <p style="margin:12px 0 0">You can request a session with another expert any time.</p>
       `,
-      cta: config.frontend.client
-        ? { label: "Find another expert", href: config.frontend.client + "/consult/book" }
-        : null,
     }),
   };
 }

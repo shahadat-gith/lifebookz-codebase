@@ -1,20 +1,6 @@
 import * as authorService from "../services/author.service.js";
-
-export async function register(req, res, next) {
-  try {
-    const { author, token } = await authorService.registerAuthor({
-      body: req.body,
-      file: req.file,
-    });
-
-    res.status(201).json({
-      success: true,
-      data: { author, token },
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+import * as passwordReset from "../services/passwordReset.service.js";
+import { parseImageRef } from "../utils/media.js";
 
 export async function login(req, res, next) {
   try {
@@ -48,8 +34,8 @@ export async function updateMe(req, res, next) {
     const author = await authorService.updateAuthor({
       userId: req.user?.id,
       body: req.body,
-      file: req.files?.avatar?.[0] || null,
-      coverFile: req.files?.coverImage?.[0] || null,
+      avatar: parseImageRef(req.body.avatar, "avatar"),
+      coverImage: parseImageRef(req.body.coverImage, "coverImage"),
     });
 
     return res.json({ success: true, data: author });
@@ -123,7 +109,7 @@ export async function listApproved(_req, res, next) {
 
 export async function forgotPassword(req, res, next) {
   try {
-    await authorService.requestPasswordReset({ email: req.body.email });
+    await passwordReset.requestPasswordReset({ email: req.body.email, role: "author" });
 
     return res.json({
       success: true,
@@ -137,7 +123,7 @@ export async function forgotPassword(req, res, next) {
 
 export async function verifyResetOTP(req, res, next) {
   try {
-    const resetToken = await authorService.verifyPasswordResetOTP({
+    const resetToken = await passwordReset.verifyPasswordResetOTP({
       email: req.body.email,
       otp: req.body.otp,
     });
@@ -154,7 +140,7 @@ export async function verifyResetOTP(req, res, next) {
 
 export async function resetPassword(req, res, next) {
   try {
-    await authorService.resetPassword({
+    await passwordReset.resetPassword({
       resetToken: req.body.resetToken,
       password: req.body.password,
     });

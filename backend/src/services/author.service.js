@@ -1,43 +1,22 @@
-import crypto from "crypto";
 import mongoose from "mongoose";
 
-import Author from "../models/Author.js";
+import User from "../models/User.js";
 import Story from "../models/Story.js";
 
-import {
-  generateToken,
-  hashPassword,
-  verifyPassword,
-} from "../utils/helpers.js";
+import { verifyPassword, flattenUser } from "../utils/helpers.js";
 import {
   authenticationError,
-  conflictError,
   notFoundError,
   validationError,
 } from "../utils/errors.js";
-import {
-  findAccountRolesByEmail,
-  noAccountMessage,
-} from "./accounts.service.js";
-import { sendWelcomeMail, sendOtpMail } from "./mailer.service.js";
 import { logger } from "./logger.service.js";
-import {
-  uploadAvatar,
-  replaceImage,
-} from "./upload.service.js";
-
-const RESET_SELECT =
-  "+auth.passwordResetOTP +auth.passwordResetOTPExpires +auth.passwordResetVerified";
-
-const OTP_TTL_MS = 10 * 60 * 1000;
-const RESET_TOKEN_TTL_MS = 5 * 60 * 1000;
+import { deleteFile } from "./upload.service.js";
+import { sendApplicationSubmitted } from "../utils/admin.utils.js";
+import { accountToken } from "./user.service.js";
 
 const PUBLIC_AUTHOR_SELECT =
-  "fullName username profession avatar coverImage verification bio socialLinks address phone dob gender stats createdAt";
-
-function authorToken(author) {
-  return generateToken({ role: "author", authorId: author.id });
-}
+  // `roles` is included so a lean projection still passes the author check.
+  "fullName avatar coverImage createdAt role roles author";
 
 /**
  * FormData sends nested objects as JSON strings — decode defensively.
@@ -53,21 +32,12 @@ function parseJsonField(value, { strict = false } = {}) {
   }
 }
 
-function sanitizeUsername(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_.-]/g, "")
-    .replace(/^[._-]+|[._-]+$/g, "")
-    .slice(0, 30);
-}
-
 async function findAuthorById(userId) {
   if (!userId) {
     throw authenticationError("Authentication required.");
   }
 
-  const author = await Author.findById(userId);
+  const author = await User.findById(userId);
 
   if (!author) {
     throw notFoundError("Author not found.");
@@ -76,119 +46,31 @@ async function findAuthorById(userId) {
   return author;
 }
 
-export async function registerAuthor({ body, file }) {
-  let {
-    email,
-    password,
-    fullName,
-    username,
-    // Optional at signup — completing the profile later unlocks publishing.
-    profession,
-    bio,
-    phone,
-    dob,
-    gender,
-    address = {},
-    socialLinks = {},
-  } = body;
-
-  // Parse JSON strings that come from FormData
-  socialLinks = parseJsonField(socialLinks, { strict: true }) ?? {};
-  address = parseJsonField(address) ?? {};
-
-  email = email?.trim().toLowerCase();
-  fullName = fullName?.trim();
-  username = sanitizeUsername(username || fullName || "");
-
-  // Lightweight signup: only name, email, password and username are required.
-  if (!email || !password || !fullName) {
-    throw validationError(
-      "Please fill all required fields (name, email, password).",
-    );
-  }
-
-  if (username.length < 3) {
-    throw validationError("Username must be at least 3 characters.");
-  }
-
-  const existing = await Author.exists({ email });
-
-  if (existing) {
-    const message = "An author with this email already exists.";
-
-    throw conflictError(message, { email: message });
-  }
-
-  let avatar = { url: "", key: "" };
-
-  if (file) {
-    const uploaded = await uploadAvatar(file.buffer, file.mimetype, "author");
-    avatar = { url: uploaded.url, key: uploaded.key };
-  }
-
-  const isProfileCompleted = Boolean(
-    profession?.trim() &&
-      bio?.trim() &&
-      phone?.trim() &&
-      dob &&
-      gender,
-  );
-
-  const author = await Author.create({
-    email,
-    username,
-    auth: { passwordHash: password },
-    fullName,
-    profession: profession?.trim() || "",
-    phone: phone?.trim() || "",
-    ...(dob ? { dob: new Date(dob) } : {}),
-    ...(gender ? { gender } : {}),
-    avatar,
-    bio: bio?.trim() || "",
-    address: {
-      country: address.country || "",
-      state: address.state || "",
-      city: address.city || "",
-      zipCode: address.zipCode || "",
-    },
-    socialLinks: {
-      website: socialLinks.website || "",
-      x: socialLinks.x || "",
-      instagram: socialLinks.instagram || "",
-      facebook: socialLinks.facebook || "",
-      linkedin: socialLinks.linkedin || "",
-      youtube: socialLinks.youtube || "",
-    },
-    isProfileCompleted,
-  });
-
-  sendWelcomeMail({ to: author.email, name: author.fullName, role: "author" });
-
-  return { author, token: authorToken(author) };
-}
-
+/**
+ * One account serves every portal (sign-up lives in the client portal), so
+ * the author portal accepts any existing account. A plain `user` who signs
+ * in here is upgraded to `author` on the spot (application starts pending)
+ * — the dashboard is where they complete their profile and publish.
+ */
 export async function loginAuthor({ email, password, ip }) {
-  const author = await Author.findOne({ email }).select("+auth.passwordHash");
+  let user = await User.findOne({ email }).select("+auth.passwordHash");
 
-  if (!author) {
-    const accountRoles = await findAccountRolesByEmail(email);
-
-    await logger.warn("Author login failed — no author account for this email", {
+  if (!user) {
+    await logger.warn("Author portal login failed — no account for this email", {
       email,
-      accountRoles,
       ip,
     });
 
-    const message = noAccountMessage(accountRoles, "author");
-
-    throw authenticationError(message, { email: message });
+    throw authenticationError("No account found with this email.", {
+      email: "No account found with this email.",
+    });
   }
 
-  const isValid = await verifyPassword(password, author.auth.passwordHash);
+  const isValid = await verifyPassword(password, user.auth.passwordHash);
 
   if (!isValid) {
-    await logger.warn("Author login failed — incorrect password", {
-      authorId: author.id,
+    await logger.warn("Author portal login failed — incorrect password", {
+      userId: user.id,
       email,
       ip,
     });
@@ -198,32 +80,43 @@ export async function loginAuthor({ email, password, ip }) {
     throw authenticationError(message, { password: message });
   }
 
-  // Pending and rejected authors can sign in too: the dashboard is where they
-  // see their application state, the rejection reason and can keep their
-  // profile up to date. Publishing is gated separately by `requireApproved`.
-  return { author, token: authorToken(author) };
+  // Implicit upgrade: any account coming through the author portal gains
+  // the author role (application pending) — including experts and authors
+  // of other kinds. Upgrades ADD to `roles` and never remove what the
+  // account already holds.
+  if (!user.roles?.includes("author")) {
+    const previousRole = user.role;
+    user.role = "author";
+    user.roles = [...(user.roles?.length ? user.roles : [user.role]), "author"];
+    user.author = user.author || {};
+    await user.save();
+    user = await User.findById(user.id);
+
+    // Fire-and-forget: the freshly granted author role needs admin approval
+    // — tell the account the request is pending and what it unlocks.
+    sendApplicationSubmitted(user.email, user.fullName, "author").catch(
+      () => {},
+    );
+  }
+
+  return { author: user, token: accountToken(user, user.role) };
 }
 
 export async function getMyAuthorProfile(userId) {
-  if (!userId) {
-    throw authenticationError("Authentication required.");
-  }
-
-  const author = await Author.findById(userId).lean();
+  const author = await User.findById(userId).lean();
 
   if (!author) {
     throw notFoundError("Author not found.");
   }
 
-  // `lean()` skips schema virtuals, so the role is added explicitly.
-  return { ...author, role: "author" };
+  return flattenUser(author);
 }
 
 export async function updateAuthor({
   userId,
   body,
-  file,
-  coverFile,
+  avatar,
+  coverImage,
 }) {
   const author = await findAuthorById(userId);
 
@@ -234,56 +127,64 @@ export async function updateAuthor({
   socialLinks = parseJsonField(socialLinks);
   address = parseJsonField(address);
 
+  // The profile lives in the author block — created on first edit. Reading
+  // the subdoc back keeps the object attached to the document.
+  if (!author.author) {
+    author.author = {};
+  }
+  const profile = author.author;
+
   if (fullName !== undefined) author.fullName = fullName;
-  if (profession !== undefined) author.profession = profession;
-  if (bio !== undefined) author.bio = bio;
-  if (phone !== undefined) author.phone = phone;
-  if (dob !== undefined) author.dob = new Date(dob);
-  if (gender !== undefined) author.gender = gender;
+  if (profession !== undefined) profile.profession = profession;
+  if (bio !== undefined) profile.bio = bio;
+  if (phone !== undefined) profile.phone = phone;
+  if (dob !== undefined) profile.dob = new Date(dob);
+  if (gender !== undefined) profile.gender = gender;
 
   if (address) {
-    author.address = { ...(author.address || {}), ...address };
+    profile.address = { ...(profile.address || {}), ...address };
   }
 
   if (socialLinks) {
-    author.socialLinks = { ...(author.socialLinks || {}), ...socialLinks };
+    profile.socialLinks = { ...(profile.socialLinks || {}), ...socialLinks };
   }
 
-  if (file) {
-    author.avatar = await replaceImage({
-      buffer: file.buffer,
-      contentType: file.mimetype,
-      role: "author",
-      kind: "avatar",
-      previousKey: author.avatar?.key,
-    });
+  // Images arrive as presigned { url, key } uploads from the dashboard.
+  // New images replace the stored ones only after a successful save; the
+  // superseded objects are cleaned up afterwards, best-effort.
+  const replacedKeys = [];
+
+  if (avatar !== undefined) {
+    replacedKeys.push(["avatar", author.avatar?.key]);
+    author.avatar = avatar;
   }
 
-  // Desktop (16:9) cover variant
-  if (coverFile) {
-    author.coverImage = await replaceImage({
-      buffer: coverFile.buffer,
-      contentType: coverFile.mimetype,
-      role: "author",
-      kind: "cover",
-      previousKey: author.coverImage?.key,
-    });
+  if (coverImage !== undefined) {
+    replacedKeys.push(["coverImage", author.coverImage?.key]);
+    author.coverImage = coverImage;
   }
 
   // Profile is considered complete once the publishing-critical fields are
   // all filled in. Keeps existing true values sticky (admins/bans aside).
   const profileDone = Boolean(
-    (author.profession || "").trim() &&
-      (author.bio || "").trim() &&
-      (author.phone || "").trim() &&
-      author.dob &&
-      author.gender,
+    (profile.profession || "").trim() &&
+      (profile.bio || "").trim() &&
+      (profile.phone || "").trim() &&
+      profile.dob &&
+      profile.gender,
   );
-  if (profileDone || author.isProfileCompleted) {
-    author.isProfileCompleted = profileDone;
+  if (profileDone || profile.isProfileCompleted) {
+    profile.isProfileCompleted = profileDone;
   }
 
   await author.save();
+
+  // Replaced images are only removed once the new ones are committed.
+  await Promise.all(
+    replacedKeys
+      .filter(([, key]) => key && key !== "")
+      .map(([, key]) => deleteFile(key).catch(() => {})),
+  );
 
   return author;
 }
@@ -292,11 +193,12 @@ export async function updateAuthor({
  * An author as any visitor sees them.
  */
 export async function getPublicAuthor({ authorId, viewerId } = {}) {
-  const author = await Author.findById(authorId)
+  const author = await User.findById(authorId)
     .select(PUBLIC_AUTHOR_SELECT)
     .lean();
 
-  if (!author) {
+  if (!author || !author.roles?.includes("author")) {
+
     throw notFoundError("Author not found.");
   }
 
@@ -311,9 +213,8 @@ export async function getPublicAuthor({ authorId, viewerId } = {}) {
   });
 
   return {
-    ...author,
-    stats: { ...author.stats, stories: storyCount },
-    role: "author",
+    ...flattenUser(author),
+    stats: { ...author.author?.stats, stories: storyCount },
     isSelf,
   };
 }
@@ -389,8 +290,11 @@ export async function getMyAuthorStats({ authorId }) {
 }
 
 export async function listApprovedAuthors() {
-  const listed = await Author.find({ "verification.status": "approved" })
-    .select("fullName profession avatar bio createdAt")
+  const listed = await User.find({
+    roles: "author",
+    "author.verification.status": "approved",
+  })
+    .select("fullName avatar bio createdAt author")
     .sort({ createdAt: -1 })
     .lean();
 
@@ -409,112 +313,7 @@ export async function listApprovedAuthors() {
   }
 
   return listed.map((author) => ({
-    ...author,
+    ...flattenUser(author),
     storyCount: countMap[author._id.toString()] || 0,
   }));
-}
-
-export async function requestPasswordReset({ email }) {
-  if (!email) {
-    throw validationError("Email is required.");
-  }
-
-  // Always resolve silently to avoid revealing whether the email exists
-  const author = await Author.findOne({ email }).select("email");
-
-  if (!author) return;
-
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-  // Targeted write on purpose. Resetting a password only touches `auth`, so it
-  // must not re-validate the rest of the profile — a document predating a
-  // `required` field would otherwise be locked out of its own reset.
-  await Author.updateOne(
-    { _id: author._id },
-    {
-      $set: {
-        "auth.passwordResetOTP": otp,
-        "auth.passwordResetOTPExpires": new Date(Date.now() + OTP_TTL_MS),
-        "auth.passwordResetVerified": false,
-      },
-    },
-  );
-
-  await sendOtpMail({ to: author.email, otp, role: "author" });
-}
-
-export async function verifyPasswordResetOTP({ email, otp }) {
-  if (!email || !otp) {
-    throw validationError("Email and OTP are required.");
-  }
-
-  const author = await Author.findOne({ email }).select(`email ${RESET_SELECT}`);
-
-  if (
-    !author ||
-    author.auth.passwordResetOTP !== otp ||
-    !author.auth.passwordResetOTPExpires ||
-    author.auth.passwordResetOTPExpires < new Date()
-  ) {
-    throw validationError("Invalid or expired OTP.");
-  }
-
-  // Verified marks that the reset token — not the OTP — is the credential the
-  // next step accepts, so the short-lived token replaces the OTP here.
-  const resetToken = crypto.randomBytes(32).toString("hex");
-
-  await Author.updateOne(
-    { _id: author._id },
-    {
-      $set: {
-        "auth.passwordResetVerified": true,
-        "auth.passwordResetOTP": resetToken,
-        "auth.passwordResetOTPExpires": new Date(
-          Date.now() + RESET_TOKEN_TTL_MS,
-        ),
-      },
-    },
-  );
-
-  return resetToken;
-}
-
-export async function resetPassword({ resetToken, password }) {
-  if (!resetToken || !password) {
-    throw validationError("Reset token and new password are required.");
-  }
-
-  if (password.length < 8) {
-    throw validationError("Password must be at least 8 characters.");
-  }
-
-  // Hashing happens here because the write below is a targeted update, so the
-  // model's pre-save hook never runs.
-  const passwordHash = await hashPassword(password);
-
-  // One atomic write: match on the token, swap in the hash and drop the token.
-  // Two concurrent submissions of the same token cannot both succeed.
-  const result = await Author.updateOne(
-    {
-      "auth.passwordResetOTP": resetToken,
-      "auth.passwordResetOTPExpires": { $gt: new Date() },
-      "auth.passwordResetVerified": true,
-    },
-    {
-      $set: {
-        "auth.passwordHash": passwordHash,
-        "auth.passwordResetVerified": false,
-      },
-      $unset: {
-        "auth.passwordResetOTP": "",
-        "auth.passwordResetOTPExpires": "",
-      },
-    },
-  );
-
-  if (result.matchedCount === 0) {
-    throw validationError(
-      "Invalid or expired reset token. Please request a new OTP.",
-    );
-  }
 }

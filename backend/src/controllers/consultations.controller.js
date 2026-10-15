@@ -86,6 +86,7 @@ export async function getOne(req, res, next) {
       id: req.params.consultationId,
       userId: req.user?.id,
       role: req.role,
+      roles: req.roles,
     });
 
     return res.json({ success: true, data: consultation });
@@ -135,6 +136,7 @@ export async function cancel(req, res, next) {
     const consultation = await consultService.cancelConsultation({
       userId: req.user?.id,
       role: req.role,
+      roles: req.roles,
       consultationId: req.params.consultationId,
       reason: req.body.reason,
     });
@@ -159,6 +161,7 @@ export async function getSession(req, res, next) {
       consultationId: req.params.consultationId,
       userId: req.user?.id,
       role: req.role,
+      roles: req.roles,
     });
 
     return res.json({ success: true, data });
@@ -184,6 +187,7 @@ export async function join(req, res, next) {
       consultationId: req.params.consultationId,
       userId: req.user?.id,
       role: req.role,
+      roles: req.roles,
     });
 
     const paymentRequired = Boolean(data.paymentRequired);
@@ -226,6 +230,7 @@ export async function joinSession(req, res, next) {
       consultationId: req.params.consultationId,
       userId: req.user?.id,
       role: req.role,
+      roles: req.roles,
     });
 
     return res.json({ success: true, data });
@@ -243,6 +248,7 @@ export async function heartbeat(req, res, next) {
       consultationId: req.params.consultationId,
       userId: req.user?.id,
       role: req.role,
+      roles: req.roles,
     });
 
     return res.json({ success: true, data });
@@ -260,6 +266,7 @@ export async function endSession(req, res, next) {
       consultationId: req.params.consultationId,
       userId: req.user?.id,
       role: req.role,
+      roles: req.roles,
       reason: req.body?.reason,
     });
 

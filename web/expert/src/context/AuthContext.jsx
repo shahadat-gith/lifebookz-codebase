@@ -56,12 +56,6 @@ export function AuthProvider({ children }) {
     setExpert(res.data.data.expert);
   }, []);
 
-  const register = useCallback(async (payload) => {
-    const res = await api.post("/experts/register", payload);
-    setStoredToken(res.data.data.token);
-    setExpert(res.data.data.expert);
-  }, []);
-
   const logout = useCallback(async () => {
     try {
       await api.post("/experts/logout");
@@ -73,6 +67,27 @@ export function AuthProvider({ children }) {
   const updateProfile = useCallback(async (payload) => {
     const res = await api.patch("/experts/me", payload);
     setExpert(res.data.data);
+  }, []);
+
+  /** Re-read the profile — callers that save through other endpoints
+   *  (e.g. an applicant saving their avatar via /users/me) use this to
+   *  refresh the session without logging in again. */
+  const reloadProfile = useCallback(async () => {
+    const res = await api.get("/experts/me");
+    setExpert(res.data.data);
+    return res.data.data;
+  }, []);
+
+  /**
+   * Accounts from other portals (role user or author) become an expert by
+   * submitting a full application — the backend flips `role` and issues a
+   * fresh token, so it replaces the stored session.
+   */
+  const upgradeToExpert = useCallback(async (payload) => {
+    const res = await api.post("/experts/upgrade", payload);
+    setStoredToken(res.data.data.token);
+    setExpert(res.data.data.expert);
+    return res.data.data.expert;
   }, []);
 
   /** Toggles whether the expert accepts new consultation requests. */
@@ -91,12 +106,14 @@ export function AuthProvider({ children }) {
       isAuthenticated: expert !== null,
       isLoading,
       login,
-      register,
       logout,
       updateProfile,
+      reloadProfile,
+      upgradeToExpert,
       setAvailability,
     }),
-    [expert, isLoading, login, register, logout, updateProfile, setAvailability],
+
+    [expert, isLoading, login, logout, updateProfile, reloadProfile, upgradeToExpert, setAvailability],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

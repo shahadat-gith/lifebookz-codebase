@@ -58,7 +58,6 @@ export function AuthProvider({ children }) {
   }, []);
 
   const registerUser = useCallback(async (data) => {
-    // Let axios auto-detect FormData and set the correct Content-Type with boundary
     const res = await api.post('/users/register', data);
     setStoredToken(res.data.data.token);
     setUser(res.data.data.user);

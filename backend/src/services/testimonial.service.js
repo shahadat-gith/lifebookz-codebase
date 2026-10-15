@@ -1,4 +1,5 @@
 import Testimonial from "../models/Testimonial.js";
+import { withId } from "../utils/helpers.js";
 import {
   forbiddenError,
   notFoundError,
@@ -14,64 +15,69 @@ const PERSON_SELECT = "fullName avatar profession";
 export async function listTestimonials({ limit } = {}) {
   const safeLimit = Math.min(Number(limit) || 20, 50);
 
-  return Testimonial.find({ status: { $ne: "hidden" } })
+  const testimonials = await Testimonial.find({ status: { $ne: "hidden" } })
     .populate("person", PERSON_SELECT)
     .sort({ createdAt: -1 })
     .limit(safeLimit)
     .lean();
+
+  return testimonials.map(withId);
 }
 
 /**
- * Users, authors and experts can each leave one testimonial at a time.
+ * Any signed-in account can leave one testimonial — one user table, so the
+ * person is unique regardless of role.
  */
 export async function createTestimonial({ role, userId, message, rating }) {
   if (!message?.trim()) {
     throw validationError("Testimonial message is required.");
   }
 
-  if (role !== "user" && role !== "author" && role !== "expert") {
+  if (!userId || !["user", "author", "expert"].includes(role)) {
     throw forbiddenError(
-      "Only authenticated users, authors and experts can post testimonials.",
+      "Only signed-in accounts can post testimonials.",
     );
   }
 
-  const personType = role === "author" ? "Author" : role === "expert" ? "Expert" : "User";
-
   // One testimonial per person — submitting again UPDATES the existing
   // entry instead of erroring (the UI presents it as "Update Testimonial").
-  const existing = await Testimonial.findOne({ personType, person: userId });
+  const existing = await Testimonial.findOne({ person: userId });
   if (existing) {
     existing.message = message.trim().slice(0, 1000);
     existing.rating = rating ? Math.min(Math.max(Number(rating), 1), 5) : existing.rating;
     await existing.save();
 
-    return Testimonial.findById(existing.id)
-      .populate("person", PERSON_SELECT)
-      .lean();
+    return withId(
+      (await Testimonial.findById(existing.id)
+        .populate("person", PERSON_SELECT)
+        .lean()) || null,
+    );
   }
 
   const testimonial = await Testimonial.create({
-    personType,
+    personType: role,
     person: userId,
     message: message.trim().slice(0, 1000),
     rating: rating ? Math.min(Math.max(Number(rating), 1), 5) : 5,
   });
 
-  return Testimonial.findById(testimonial.id)
-    .populate("person", PERSON_SELECT)
-    .lean();
+  return withId(
+    (await Testimonial.findById(testimonial.id)
+      .populate("person", PERSON_SELECT)
+      .lean()) || null,
+  );
 }
 
 /**
  * The signed-in person's own testimonial (or null).
  */
-export async function getMyTestimonial({ role, userId }) {
-  if (!userId || !["user", "author", "expert"].includes(role)) return null;
-  const personType =
-    role === "author" ? "Author" : role === "expert" ? "Expert" : "User";
-  return Testimonial.findOne({ personType, person: userId })
-    .populate("person", PERSON_SELECT)
-    .lean();
+export async function getMyTestimonial({ userId }) {
+  if (!userId) return null;
+  return withId(
+    (await Testimonial.findOne({ person: userId })
+      .populate("person", PERSON_SELECT)
+      .lean()) || null,
+  );
 }
 
 /**
@@ -111,5 +117,5 @@ export async function moderateTestimonial({ id, status }) {
     throw notFoundError("Testimonial not found.");
   }
 
-  return testimonial;
+  return withId(testimonial.toObject ? testimonial.toObject() : testimonial);
 }

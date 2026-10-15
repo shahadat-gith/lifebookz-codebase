@@ -1,11 +1,22 @@
 import Story from "../models/Story.js";
 import Like from "../models/Like.js";
 import Comment from "../models/Comment.js";
-import Author from "../models/Author.js";
+import User from "../models/User.js";
+import { flattenUser, withId } from "../utils/helpers.js";
 
-import { uploadStoryImage } from "./upload.service.js";
 import { deleteObject } from "../config/r2.js";
 import { sanitizeHtml } from "../utils/sanitizeHtml.js";
+
+/**
+ * Uploads land straight in R2 via presigned URLs — the body only ever
+ * carries { url, key }. Anything malformed becomes null instead of writing
+ * garbage references.
+ */
+function sanitizeImageRef(ref) {
+  if (!ref || typeof ref !== "object" || !ref.url) return null;
+
+  return { url: String(ref.url).trim(), key: String(ref.key || "").trim() };
+}
 import {
   forbiddenError,
   notFoundError,
@@ -31,7 +42,7 @@ function chapterName(order) {
 
 
 const AUTHOR_POPULATE =
-  "fullName username avatar profession verification.status";
+  "fullName avatar author.profession author.verification.status";
 
 const PUBLIC_VISIBILITIES = ["public"];
 
@@ -83,8 +94,8 @@ async function findOwnedStory({ authorId, storyId }) {
 /**
  * Media descriptors stored on story entries. Photos and videos only — media
  * is uploaded by the client straight to R2 via presigned URLs
- * (controllers/story.media.controller.js); the server only ever stores the
- * resulting URL + key.
+ * (POST /uploads/presign); the server only ever stores the resulting
+ * URL + key.
  */
 const ALLOWED_MEDIA_TYPES = ["image", "video"];
 
@@ -186,7 +197,7 @@ function sanitizeChapter(chapter = {}, fallbackOrder = 0) {
 /**
  * Creates a lifebook, optionally seeding the first chapter.
  */
-export async function createStory({ authorId, body, file }) {
+export async function createStory({ authorId, body }) {
   let chapters = parseMaybeJson(body.chapters) ?? [];
   if (!Array.isArray(chapters)) chapters = [];
 
@@ -198,22 +209,20 @@ export async function createStory({ authorId, body, file }) {
     ? body.visibility
     : "public";
 
-  let bannerImage = null;
-  if (file) {
-    const uploaded = await uploadStoryImage(file.buffer, file.mimetype);
-    bannerImage = { url: uploaded.url, key: uploaded.key };
-  }
+  // The banner was uploaded by the browser straight to R2 — only its
+  // references travel in the body.
+  const bannerImage = sanitizeImageRef(body.bannerImage);
 
-  const authorDoc = await Author.findById(authorId)
-    .select("profession")
+  const authorDoc = await User.findById(authorId)
+    .select("author.profession")
     .lean();
 
   const finalChapters = chapters.map(sanitizeChapter);
 
   return Story.create({
     author: authorId,
-    authorProfession: authorDoc?.profession
-      ? authorDoc.profession.toLowerCase()
+    authorProfession: authorDoc?.author?.profession
+      ? authorDoc.author.profession.toLowerCase()
       : null,
     title: cleanTitle,
     visibility,
@@ -228,7 +237,7 @@ export async function createStory({ authorId, body, file }) {
  * Updates lifebook metadata and/or chapters. Authors have full control —
  * editing is allowed in any state, including published lifebooks.
  */
-export async function updateStory({ authorId, storyId, body, file }) {
+export async function updateStory({ authorId, storyId, body }) {
   const story = await findOwnedStory({ authorId, storyId });
 
   // Everything the lifebook referenced before this update. Anything the
@@ -256,9 +265,8 @@ export async function updateStory({ authorId, storyId, body, file }) {
     story.status = status;
   }
 
-  if (file) {
-    const uploaded = await uploadStoryImage(file.buffer, file.mimetype);
-    story.bannerImage = { url: uploaded.url, key: uploaded.key };
+  if (body.bannerImage !== undefined) {
+    story.bannerImage = sanitizeImageRef(body.bannerImage);
   }
 
   await story.save();
@@ -313,7 +321,7 @@ export async function listDrafts({ authorId, page, limit }) {
   ]);
 
   return {
-    stories,
+    stories: stories.map(withId),
     pagination: {
       page: safePage,
       limit: safeLimit,
@@ -339,6 +347,10 @@ export async function getStoryDetail({ storyId, viewer }) {
   if (!story) {
     throw notFoundError("Story not found.");
   }
+
+  // lean() bypasses schema transforms — flatten the populated author.
+  story.author = flattenUser(story.author);
+  if (!story.id && story._id) story.id = String(story._id);
 
   const isOwner =
     viewer?.id && story.author?._id?.toString() === viewer.id.toString();
@@ -404,11 +416,13 @@ export async function listStories({ query: queryParams, viewer }) {
     );
   }
 
-  // Author name filter — case-insensitive partial match on fullName/username
+  // Author name filter — case-insensitive partial match on fullName.
+  // Only actual story authors are matched.
   if (authorName?.trim()) {
     const nameRx = new RegExp(escapeRegex(authorName.trim()), "i");
-    const matchingAuthors = await Author.find({
-      $or: [{ fullName: nameRx }, { username: nameRx }],
+    const matchingAuthors = await User.find({
+      roles: "author",
+      fullName: nameRx,
     })
       .select("_id")
       .lean();
@@ -417,7 +431,7 @@ export async function listStories({ query: queryParams, viewer }) {
 
   // Author gender filter
   if (gender && ["Male", "Female", "Other"].includes(gender)) {
-    const genderAuthors = await Author.find({ gender })
+    const genderAuthors = await User.find({ "author.gender": gender, roles: "author" })
       .select("_id")
       .lean();
     filter.author = { ...(filter.author || {}), $in: genderAuthors.map((a) => a._id) };
@@ -484,7 +498,8 @@ export async function listStories({ query: queryParams, viewer }) {
   }
 
   const enrichedStories = stories.map((story) => ({
-    ...story,
+    ...withId(story),
+    author: flattenUser(story.author),
     likedByUser: likedMap[story._id.toString()] ?? false,
   }));
 
@@ -745,11 +760,11 @@ export async function publishStory({ authorId, storyId, body }) {
   }
 
   // Sync denormalized profession in case author updated profile
-  const authorDoc = await Author.findById(story.author)
-    .select("profession")
+  const authorDoc = await User.findById(story.author)
+    .select("author.profession")
     .lean();
-  if (authorDoc?.profession) {
-    story.authorProfession = authorDoc.profession.toLowerCase();
+  if (authorDoc?.author?.profession) {
+    story.authorProfession = authorDoc.author.profession.toLowerCase();
   }
 
   // Optional visibility change at publish time
@@ -805,7 +820,6 @@ export async function unpublishStory({ authorId, storyId }) {
 export async function toggleLike({
   storyId,
   userId,
-  userModel = "User",
   fullName = "A reader",
 }) {
   const story = await Story.findOne({
@@ -827,8 +841,8 @@ export async function toggleLike({
         $inc: { "stats.likes": -1 },
         $pull: { recentLikers: { user: userId } },
       }),
-      Author.findByIdAndUpdate(story.author, {
-        $inc: { "stats.likes": -1 },
+      User.findByIdAndUpdate(story.author, {
+        $inc: { "author.stats.likes": -1 },
       }),
     ]);
 
@@ -836,7 +850,7 @@ export async function toggleLike({
   }
 
   await Promise.all([
-    Like.create({ story: storyId, user: userId, userModel }),
+    Like.create({ story: storyId, user: userId }),
     Story.findByIdAndUpdate(storyId, {
       $inc: { "stats.likes": 1 },
       $push: {
@@ -847,8 +861,8 @@ export async function toggleLike({
         },
       },
     }),
-    Author.findByIdAndUpdate(story.author, {
-      $inc: { "stats.likes": 1 },
+    User.findByIdAndUpdate(story.author, {
+      $inc: { "author.stats.likes": 1 },
     }),
   ]);
 
@@ -874,6 +888,7 @@ function shapeReply(reply) {
 
   return {
     ...reply,
+    ...(reply._id && !reply.id ? { id: String(reply._id) } : {}),
     author: author?._id || reply.author,
     fullName: author?.fullName || "Author",
     avatar: author?.avatar?.url || "",
@@ -891,7 +906,8 @@ function commentPopulate(query) {
 function shapeComment(comment) {
   return {
     ...comment,
-    // Populate resolves through `refPath` for every account type; a guard
+    ...(comment._id && !comment.id ? { id: String(comment._id) } : {}),
+    // Populate resolves through the comment's user reference; a guard
     // keeps a malformed row from breaking the whole comment list.
     user: comment.user || { _id: null, fullName: "A reader", avatar: { url: "" } },
     replies: (comment.replies || []).map(shapeReply),
@@ -905,7 +921,6 @@ function shapeComment(comment) {
 export async function createComment({
   storyId,
   userId,
-  userModel = "User",
   content,
 }) {
   if (!content?.trim()) {
@@ -925,7 +940,6 @@ export async function createComment({
   const comment = await Comment.create({
     story: storyId,
     user: userId,
-    userModel,
     content: content.trim(),
   });
 
@@ -939,14 +953,13 @@ export async function createComment({
 export async function updateComment({
   commentId,
   userId,
-  userModel = "User",
   content,
 }) {
   if (!content?.trim()) {
     throw validationError("Comment cannot be empty.");
   }
 
-  const comment = await Comment.findOne({ _id: commentId, user: userId, userModel });
+  const comment = await Comment.findOne({ _id: commentId, user: userId });
 
   if (!comment) {
     throw notFoundError("Comment not found.");
@@ -960,8 +973,8 @@ export async function updateComment({
   return comment;
 }
 
-export async function deleteComment({ commentId, userId, userModel = "User" }) {
-  const comment = await Comment.findOne({ _id: commentId, user: userId, userModel });
+export async function deleteComment({ commentId, userId }) {
+  const comment = await Comment.findOne({ _id: commentId, user: userId });
 
   if (!comment) {
     throw notFoundError("Comment not found.");
@@ -973,7 +986,7 @@ export async function deleteComment({ commentId, userId, userModel = "User" }) {
   ]);
 }
 
-export async function listComments({ storyId, page, limit, viewerId, viewerModel }) {
+export async function listComments({ storyId, page, limit, viewerId }) {
   const safePage = Math.max(Number(page) || 1, 1);
   const safeLimit = Math.min(Number(limit) || 20, 50);
 
@@ -1011,7 +1024,7 @@ export async function listComments({ storyId, page, limit, viewerId, viewerModel
  * Toggle a like on a comment. Any signed-in account (user, author or
  * expert) can like comments.
  */
-export async function toggleCommentLike({ commentId, whoId, whoModel }) {
+export async function toggleCommentLike({ commentId, whoId }) {
   const comment = await Comment.findById(commentId);
   if (!comment) {
     throw notFoundError("Comment not found.");
@@ -1026,7 +1039,7 @@ export async function toggleCommentLike({ commentId, whoId, whoModel }) {
       (l) => String(l.who) !== String(whoId),
     );
   } else {
-    comment.likes.push({ who: whoId, whoModel: whoModel || "User" });
+    comment.likes.push({ who: whoId });
   }
 
   await comment.save();
@@ -1076,18 +1089,19 @@ export async function replyToComment({ commentId, authorId, content }) {
  * first) — the story filter modal's options.
  */
 export async function listProfessions() {
-  const professions = await Author.aggregate([
+  const professions = await User.aggregate([
     {
       $match: {
-        "verification.status": "approved",
+        roles: "author",
+        "author.verification.status": "approved",
         status: "active",
-        profession: { $type: "string", $ne: "" },
+        "author.profession": { $type: "string", $ne: "" },
       },
     },
     {
       $group: {
-        _id: { $toLower: "$profession" },
-        label: { $first: "$profession" },
+        _id: { $toLower: "$author.profession" },
+        label: { $first: "$author.profession" },
         count: { $sum: 1 },
       },
     },

@@ -1,13 +1,11 @@
 import config from "../config/index.js";
 
-import Author from "../models/Author.js";
-import Expert from "../models/Expert.js";
 import User from "../models/User.js";
 import Story from "../models/Story.js";
 import Like from "../models/Like.js";
 import Comment from "../models/Comment.js";
 
-import { generateToken } from "../utils/helpers.js";
+import { generateToken, flattenUser } from "../utils/helpers.js";
 import {
   authenticationError,
   notFoundError,
@@ -50,51 +48,54 @@ export function getAdminIdentity() {
 }
 
 export async function getDashboardStats() {
-  const [
-    totalUsers,
-    totalAuthors,
-    totalStories,
-    totalExperts,
-    pendingAuthors,
-    pendingExperts,
-  ] = await Promise.all([
-    User.countDocuments(),
-    Author.countDocuments(),
-    Story.countDocuments({ status: "published" }),
-    Expert.countDocuments(),
-    Author.countDocuments({ "verification.status": "pending" }),
-    Expert.countDocuments({ "verification.status": "pending" }),
-  ]);
+  const [readers, authors, stories, experts, pendingAuthors, pendingExperts] =
+    await Promise.all([
+      User.countDocuments({ role: "user" }),
+      User.countDocuments({ roles: "author" }),
+      Story.countDocuments({ status: "published" }),
+      User.countDocuments({ roles: "expert" }),
+      User.countDocuments({ roles: "author", "author.verification.status": "pending" }),
+      User.countDocuments({ roles: "expert", "expert.verification.status": "pending" }),
+    ]);
 
   return {
-    totalUsers,
-    totalAuthors,
-    totalStories,
-    totalExperts,
+    totalUsers: readers,
+    totalAuthors: authors,
+    totalStories: stories,
+    totalExperts: experts,
     pendingAuthors,
     pendingExperts,
   };
 }
 
+// ---------------------------------------------------------------------------
+// Author applications
+// ---------------------------------------------------------------------------
+
 export async function listPendingAuthors() {
-  const authors = await Author.find({ "verification.status": "pending" })
+  const authors = await User.find({
+    roles: "author",
+    "author.verification.status": "pending",
+  })
     .sort({ createdAt: 1 })
     .lean();
 
-  // `lean()` skips schema virtuals, so the role is added explicitly.
-  return authors.map((author) => ({ ...author, role: "author" }));
+  return authors.map(flattenUser);
 }
 
 export async function approveAuthor({ authorId }) {
-  const author = await Author.findById(authorId);
+  const author = await User.findOne({ _id: authorId, roles: "author" });
 
   if (!author) {
     throw notFoundError("Author not found.");
   }
 
-  author.verification.status = "approved";
-  author.verification.verifiedAt = new Date();
-  author.verification.rejectionReason = "";
+  const authorProfile = author.author || (author.author = {});
+
+  authorProfile.verification = authorProfile.verification || {};
+  authorProfile.verification.status = "approved";
+  author.author.verification.verifiedAt = new Date();
+  author.author.verification.rejectionReason = "";
 
   await author.save();
 
@@ -109,15 +110,18 @@ export async function rejectAuthor({ authorId, reason }) {
     throw validationError("Rejection reason is required.");
   }
 
-  const author = await Author.findById(authorId);
+  const author = await User.findOne({ _id: authorId, roles: "author" });
 
   if (!author) {
     throw notFoundError("Author not found.");
   }
 
-  author.verification.status = "rejected";
-  author.verification.verifiedAt = new Date();
-  author.verification.rejectionReason = reason.trim();
+  const authorProfile = author.author || (author.author = {});
+
+  authorProfile.verification = authorProfile.verification || {};
+  authorProfile.verification.status = "rejected";
+  author.author.verification.verifiedAt = new Date();
+  author.author.verification.rejectionReason = reason.trim();
 
   await author.save();
 
@@ -127,7 +131,10 @@ export async function rejectAuthor({ authorId, reason }) {
 }
 
 export async function listApprovedAuthors() {
-  const authors = await Author.find({ "verification.status": "approved" })
+  const authors = await User.find({
+    roles: "author",
+    "author.verification.status": "approved",
+  })
     .sort({ createdAt: -1 })
     .lean();
 
@@ -146,16 +153,23 @@ export async function listApprovedAuthors() {
   }
 
   return authors.map((author) => ({
-    ...author,
-    role: "author",
+    ...flattenUser(author),
     storyCount: countMap[author._id.toString()] || 0,
   }));
 }
 
-export async function listUsers() {
-  const users = await User.find().sort({ createdAt: -1 }).lean();
+// ---------------------------------------------------------------------------
+// Reader accounts (role: user)
+// ---------------------------------------------------------------------------
 
-  return users.map((user) => ({ ...user, role: "user" }));
+export async function listUsers() {
+  const users = await User.find({ role: "user" }).sort({ createdAt: -1 }).lean();
+
+  users.forEach((user) => {
+    delete user.auth;
+  });
+
+  return users;
 }
 
 export async function listStories() {
@@ -210,7 +224,9 @@ export async function deleteStory({ storyId }) {
 export async function setUserStatus({ userId, status }) {
   if (!["active", "suspended"].includes(status)) {
     throw validationError("Status must be active or suspended.");
-  }  const user = await User.findById(userId);
+  }
+
+  const user = await User.findById(userId);
 
   if (!user) {
     throw notFoundError("User not found.");
@@ -222,24 +238,34 @@ export async function setUserStatus({ userId, status }) {
   return user;
 }
 
+// ---------------------------------------------------------------------------
+// Expert applications
+// ---------------------------------------------------------------------------
+
 export async function listPendingExperts() {
-  const experts = await Expert.find({ "verification.status": "pending" })
+  const experts = await User.find({
+    roles: "expert",
+    "expert.verification.status": "pending",
+  })
     .sort({ createdAt: 1 })
     .lean();
 
-  return experts.map((expert) => ({ ...expert, role: "expert" }));
+  return experts.map(flattenUser);
 }
 
 export async function approveExpert({ expertId }) {
-  const expert = await Expert.findById(expertId);
+  const expert = await User.findOne({ _id: expertId, roles: "expert" });
 
   if (!expert) {
     throw notFoundError("Expert not found.");
   }
 
-  expert.verification.status = "approved";
-  expert.verification.verifiedAt = new Date();
-  expert.verification.rejectionReason = "";
+  const expertProfile = expert.expert || (expert.expert = {});
+
+  expertProfile.verification = expertProfile.verification || {};
+  expertProfile.verification.status = "approved";
+  expertProfile.verification.verifiedAt = new Date();
+  expertProfile.verification.rejectionReason = "";
 
   await expert.save();
 
@@ -253,15 +279,18 @@ export async function rejectExpert({ expertId, reason }) {
     throw validationError("Rejection reason is required.");
   }
 
-  const expert = await Expert.findById(expertId);
+  const expert = await User.findOne({ _id: expertId, roles: "expert" });
 
   if (!expert) {
     throw notFoundError("Expert not found.");
   }
 
-  expert.verification.status = "rejected";
-  expert.verification.verifiedAt = new Date();
-  expert.verification.rejectionReason = reason.trim();
+  const expertProfile = expert.expert || (expert.expert = {});
+
+  expertProfile.verification = expertProfile.verification || {};
+  expertProfile.verification.status = "rejected";
+  expertProfile.verification.verifiedAt = new Date();
+  expertProfile.verification.rejectionReason = reason.trim();
 
   await expert.save();
 
@@ -276,9 +305,12 @@ export async function rejectExpert({ expertId, reason }) {
 }
 
 export async function listApprovedExperts() {
-  const experts = await Expert.find({ "verification.status": "approved" })
+  const experts = await User.find({
+    roles: "expert",
+    "expert.verification.status": "approved",
+  })
     .sort({ createdAt: -1 })
     .lean();
 
-  return experts.map((expert) => ({ ...expert, role: "expert" }));
+  return experts.map(flattenUser);
 }

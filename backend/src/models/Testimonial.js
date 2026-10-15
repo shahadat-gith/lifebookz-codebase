@@ -2,16 +2,17 @@ import mongoose from "mongoose";
 
 const testimonialSchema = new mongoose.Schema(
   {
+    // Snapshot of the poster's role at the time of posting, for display.
     personType: {
       type: String,
-      enum: ["User", "Author", "Expert"],
-      required: true,
+      enum: ["user", "author", "expert"],
+      default: "user",
     },
 
     person: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
-      refPath: "personType",
+      ref: "User",
     },
 
     message: {
@@ -50,25 +51,6 @@ const testimonialSchema = new mongoose.Schema(
   },
 );
 
-testimonialSchema.pre("validate", async function (next) {
-  try {
-    if (!this.isModified("person") && !this.isModified("personType")) {
-      return next();
-    }
-
-    const Model = mongoose.model(this.personType);
-
-    const exists = await Model.exists({ _id: this.person });
-
-    if (!exists) {
-      return next(new Error(`${this.personType} does not exist.`));
-    }
-
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
 
 const Testimonial =
   mongoose.models.Testimonial || mongoose.model("Testimonial", testimonialSchema);

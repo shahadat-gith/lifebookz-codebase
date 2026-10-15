@@ -50,6 +50,8 @@ export function AuthProvider({ children }) {
     restoreSession();
   }, []);
 
+  // sign-up lives in the client portal — one account serves every portal —
+  // so this portal only ever signs existing accounts in.
   const login = useCallback(async (payload) => {
     const res = await api.post("/authors/login", payload);
     const data = res.data.data;
@@ -57,12 +59,6 @@ export function AuthProvider({ children }) {
     setStoredToken(data.token);
     setAuthor(data.author);
     return data;
-  }, []);
-
-  const register = useCallback(async (payload) => {
-    const res = await api.post("/authors/register", payload);
-    setStoredToken(res.data.data.token);
-    setAuthor(res.data.data.author);
   }, []);
 
   const logout = useCallback(async () => {
@@ -87,7 +83,6 @@ export function AuthProvider({ children }) {
       isAuthenticated: author !== null,
       isLoading,
       login,
-      register,
       logout,
       updateProfile,
     }),
@@ -95,7 +90,6 @@ export function AuthProvider({ children }) {
       author,
       isLoading,
       login,
-      register,
       logout,
       updateProfile,
     ],

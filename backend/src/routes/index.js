@@ -8,6 +8,7 @@ import testimonialRoutes from "./testimonial.routes.js";
 import expertRoutes from "./expert.routes.js";
 import consultRoutes from "./consultations.routes.js";
 import paymentRoutes from "./payment.routes.js";
+import uploadRoutes from "./upload.routes.js";
 import developerRoutes from "./developer.routes.js";
 
 const router = Router();
@@ -20,6 +21,7 @@ router.use("/testimonials", testimonialRoutes);
 router.use("/experts", expertRoutes);
 router.use("/consultations", consultRoutes);
 router.use("/payments", paymentRoutes);
+router.use("/uploads", uploadRoutes);
 router.use("/developer", developerRoutes);
 
 export default router;

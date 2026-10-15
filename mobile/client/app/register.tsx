@@ -12,13 +12,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import * as ImagePicker from "expo-image-picker";
 
 import { useAuth } from "../src/context/AuthContext";
 import { useToast } from "../src/components/Toast";
-import { Avatar, Button, Input } from "../src/components/ui";
+import { Button, Input } from "../src/components/ui";
 import { apiError } from "../src/utils/helpers";
-import { Radius, Spacing, useTheme } from "../src/theme";
+import { Spacing, useTheme } from "../src/theme";
 import { Image } from "expo-image";
 
 const LOGO = require("../assets/images/logo.png");
@@ -33,28 +32,9 @@ export default function RegisterScreen() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  // RN's FormData accepts { uri, name, type } objects as file fields.
-  const [avatar, setAvatar] = useState<{ uri: string; name: string; type: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  async function pickAvatar() {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-      allowsEditing: true,
-      aspect: [1, 1],
-    });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      setAvatar({
-        uri: asset.uri,
-        name: asset.fileName || "avatar.jpg",
-        type: asset.mimeType || "image/jpeg",
-      });
-    }
-  }
 
   async function handleSubmit() {
     setError("");
@@ -66,15 +46,13 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      const fd = new FormData();
-      fd.append("fullName", fullName.trim());
-      fd.append("email", email.trim());
-      fd.append("password", password);
-      if (avatar) {
-        // Cast: RN's FormData extension isn't in the DOM FormData types.
-        fd.append("avatar", avatar as unknown as Blob);
-      }
-      await registerUser(fd);
+      // Name, email and password only — the profile photo is chosen from
+      // the dashboard later.
+      await registerUser({
+        fullName: fullName.trim(),
+        email: email.trim(),
+        password,
+      });
       toast.success("Account created successfully!");
       router.back();
     } catch (err) {
@@ -101,26 +79,6 @@ export default function RegisterScreen() {
             <Text style={[styles.subtitle, { color: theme.textMuted }]}>
               Join the community of readers and storytellers.
             </Text>
-          </View>
-
-          {/* Avatar picker */}
-          <View style={[styles.avatarCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Pressable onPress={pickAvatar}>
-              <Avatar uri={avatar?.uri} name={fullName || "User"} size={64} />
-            </Pressable>
-            <View style={{ flex: 1, marginLeft: Spacing.lg }}>
-              <Text style={{ color: theme.text, fontWeight: "700", fontSize: 14 }}>
-                Profile picture
-              </Text>
-              <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
-                Optional — or use your initials.
-              </Text>
-              <Pressable onPress={pickAvatar} hitSlop={4}>
-                <Text style={{ color: theme.primary, fontSize: 13, fontWeight: "600", marginTop: Spacing.sm }}>
-                  {avatar ? "Change photo" : "Upload photo"}
-                </Text>
-              </Pressable>
-            </View>
           </View>
 
           <Input
@@ -192,15 +150,6 @@ const styles = StyleSheet.create({
   header: { alignItems: "center", marginVertical: Spacing.lg, gap: Spacing.sm },
   title: { fontSize: 26, fontWeight: "800" },
   subtitle: { fontSize: 14, textAlign: "center" },
-
-  avatarCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: Spacing.lg,
-    borderRadius: Radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginBottom: Spacing.lg,
-  },
   footer: {
     flexDirection: "row",
     justifyContent: "center",

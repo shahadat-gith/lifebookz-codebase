@@ -111,9 +111,6 @@ export default function ProfileScreen() {
             <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
               {user?.fullName || "Reader"}
             </Text>
-            {user?.username ? (
-              <Text style={[styles.username, { color: theme.textMuted }]}>@{user.username}</Text>
-            ) : null}
             {user?.profession ? (
               <View style={[styles.professionChip, { backgroundColor: `${theme.primary}14` }]}>
                 <Ionicons name="briefcase-outline" size={11} color={theme.primary} />
@@ -225,7 +222,6 @@ const styles = StyleSheet.create({
     padding: 1,
   },
   name: { fontSize: 20, fontWeight: "800", marginTop: Spacing.md },
-  username: { fontSize: 13, marginTop: 2 },
   professionChip: {
     flexDirection: "row",
     alignItems: "center",

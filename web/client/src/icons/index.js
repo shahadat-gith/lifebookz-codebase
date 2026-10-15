@@ -45,7 +45,7 @@ import {
  HiOutlineEye,
  HiOutlineMicrophone,
  HiOutlineVideoCamera,
- HiOutlineCurrencyDollar,
+ HiOutlineCurrencyRupee,
  HiOutlinePhone,
  HiOutlineBell,
  HiOutlinePhotograph,
@@ -171,7 +171,7 @@ export const Icons = {
   microphone: HiOutlineMicrophone,
   micOff: MdMicOff,
   videoCameraOff: MdVideocamOff,
-  money: HiOutlineCurrencyDollar,
+  money: HiOutlineCurrencyRupee,
 
  // Material Design
  verified: MdVerified,

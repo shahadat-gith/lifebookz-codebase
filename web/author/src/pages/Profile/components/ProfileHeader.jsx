@@ -112,7 +112,6 @@ export default function ProfileHeader({ author, bio, onShare, onEdit }) {
             </div>
 
             <div className="mt-1 flex flex-wrap items-center justify-center gap-2 text-sm sm:justify-start">
-              <span className="text-muted-foreground">@{author.username}</span>
               {isApproved && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-semibold text-success">
                   <Icons.check className="h-3 w-3" />
