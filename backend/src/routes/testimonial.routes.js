@@ -10,14 +10,6 @@ router.get("/", testimonial.list);
 
 router.post("/", authenticate, authorize("user", "author", "expert"), testimonial.create);
 
-// Signed-in — the caller's own testimonial.
-router.get(
-  "/me",
-  authenticate,
-  authorize("user", "author", "expert"),
-  testimonial.mine,
-);
-
 router.delete(
   "/:id",
   authenticate,

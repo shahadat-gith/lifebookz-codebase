@@ -1,12 +1,4 @@
 import { Icons } from "../../icons";
-import {
-  chapterHint,
-  chapterLabel,
-  chapterNumber,
-  chapterTitle,
-  sortChapters,
-  suggestedTitle,
-} from "../../utils/chapters";
 
 /** The profile's tabs, in the order they are shown. */
 export const PROFILE_TABS = [
@@ -36,42 +28,43 @@ const CHAPTER_NUM_COLORS = [
 ];
 
 /**
- * One row per chapter across the author's lifebooks, with everything the
- * chapter cards and the stories/memories tabs need already resolved.
+ * One row per chapter (a story's `chapterName`), with everything the chapter
+ * cards and the stories/memories tabs need already resolved.
  *
- * The rows come from the lifebooks the tabs render, so the counters can never
+ * The rows come from the stories the tabs render, so the counters can never
  * disagree with the lists below them.
  */
 export function chapterRows(stories = []) {
-  return stories
-    .flatMap((book) =>
-      sortChapters(book.chapters).map((chapter) => ({ ...chapter, book })),
-    )
-    .map((chapter) => {
-      const order = Number(chapter.order) || 0;
-      // Author lifebooks show all chapters side by side, so the tint follows
-      // the chapter's slot rather than its place in the list.
-      const cover = (chapter.stories || [])
-        .flatMap((story) => story.media || [])
-        .find((media) => media.type === "image")?.url;
+  const groups = new Map();
 
-      const name = chapterTitle(chapter);
+  for (const story of stories) {
+    // The story's banner first — it's the mandatory cover. Fallback to the
+    // story's own gallery for anything uploaded before the banner existed.
+    const name = story.chapterName || "Uncategorized";
+    const key = name;
 
-      return {
-        ...chapter,
-        order,
-        number: chapterNumber(order),
-        name,
-        label: chapterLabel(chapter),
-        // A slot's description only applies while the chapter still carries
-        // the slot's own name.
-        hint: name === suggestedTitle(order) ? chapterHint(order) : "",
-        storyCount: chapter.stories?.length || 0,
-        tint: CHAPTER_TINTS[order % CHAPTER_TINTS.length],
-        numColor: CHAPTER_NUM_COLORS[order % CHAPTER_NUM_COLORS.length],
-        cover: cover || null,
-      };
-    });
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(story);
+  }
+
+  return [...groups.entries()].map(([name, group], index) => {
+    const cover = group.find((s) => s.bannerImage?.url)?.bannerImage?.url;
+
+    return {
+      // Synthetic chapter: a named group of flat stories.
+      keyName: name,
+      name,
+      label: name,
+      hint: "",
+      order: index,
+      number: index + 1,
+      storyCount: group.length,
+      tint: CHAPTER_TINTS[index % CHAPTER_TINTS.length],
+      numColor: CHAPTER_NUM_COLORS[index % CHAPTER_NUM_COLORS.length],
+      cover: cover || null,
+      stories: group,
+    };
+  });
 }
 
 /**

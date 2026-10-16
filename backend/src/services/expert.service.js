@@ -135,11 +135,12 @@ export async function upgradeToExpert({ userId, body, avatar }) {
   // Optional pre-uploaded avatar, applied from the dashboard later too.
   if (avatar !== undefined) expert.avatar = avatar;
 
-  const previousRole = expert.role;
   // The expert capability is ADDED — an author who upgrades stays a
-  // published-author too, so one account can use all three portals.
-  expert.roles = expert.roles?.length ? [...expert.roles, "expert"] : [previousRole || "user", "expert"];
-  expert.role = "expert";
+  // published-author too, so one account can use all three portals. The
+  // validate hook syncs isExpert from the array.
+  expert.roles = expert.roles?.length
+    ? Array.from(new Set([...expert.roles, "expert"]))
+    : ["user", "expert"];
 
   try {
     await expert.save();
@@ -155,7 +156,7 @@ export async function upgradeToExpert({ userId, body, avatar }) {
     () => {},
   );
 
-  return { expert, previousRole, token: accountToken(expert, "expert") };
+  return { expert, token: accountToken(expert) };
 }
 
 /**
@@ -191,7 +192,7 @@ export async function loginExpert({ email, password, ip }) {
     throw authenticationError(message, { password: message });
   }
 
-  return { expert: user, token: accountToken(user, user.role) };
+  return { expert: user, token: accountToken(user) };
 }
 
 export async function getMyExpertProfile(userId) {

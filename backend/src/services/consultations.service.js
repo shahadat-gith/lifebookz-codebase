@@ -96,8 +96,16 @@ export async function createHandoffTicket({ token }) {
     throw authenticationError("Invalid or expired token.");
   }
 
-  const role = decoded.role;
-  if (!HANDOFF_ROLES.includes(role)) {
+  // Array-era tokens carry `roles`; legacy tokens still carry `role` —
+  // accept both while old sessions live.
+  const decodedRoles = Array.isArray(decoded.roles) && decoded.roles.length > 0
+    ? decoded.roles
+    : decoded.role
+      ? [decoded.role]
+      : [];
+
+  const role = decodedRoles.find((candidate) => HANDOFF_ROLES.includes(candidate));
+  if (!role) {
     throw forbiddenError("This account type cannot open a consultation room.");
   }
 
@@ -131,8 +139,15 @@ export async function createHandoffTicket({ token }) {
  * changed (e.g. the account upgraded to expert since).
  */
 async function resolveTicketRole(ticket) {
-  const account = await User.findById(ticket.accountId).select("role").lean();
-  return account?.role || ticket.role;
+  // The ticket's captured side wins when the account still holds it, so a
+  // reader/author who later gains more roles keeps the consultation side
+  // they opened the room as.
+  const account = await User.findById(ticket.accountId).select("roles").lean();
+
+  if (Array.isArray(account?.roles) && account.roles.includes(ticket.role)) {
+    return ticket.role;
+  }
+  return ticket.role;
 }
 
 /**
@@ -155,8 +170,16 @@ export async function exchangeHandoffTicket({ code }) {
 
   const role = await resolveTicketRole(ticket);
 
+  // The exchanged token is array-based, like every other login token —
+  // middleware authorization reads `roles`, so a single-role token would
+  // drop whatever else the account holds.
+  const account = await User.findById(ticket.accountId).select("roles").lean();
+  const roles = Array.isArray(account?.roles) && account.roles.length > 0
+    ? account.roles
+    : [role];
+
   return {
-    token: generateToken({ role, userId: ticket.accountId }),
+    token: generateToken({ roles, userId: ticket.accountId }),
     role,
   };
 }

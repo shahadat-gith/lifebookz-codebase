@@ -44,7 +44,7 @@ export default function TrendingPage() {
     setLoading(true);
 
     api
-      .get("/stories", { params: { type: "trending" } })
+      .get("/stories/trending")
       .then((res) => {
         if (!cancelled) {
           setStories(res.data.data.stories || []);

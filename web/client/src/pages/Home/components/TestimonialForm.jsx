@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../../config/api";
 import { useAuth } from "../../../context/AuthContext";
@@ -16,24 +16,6 @@ export default function TestimonialForm({ onSubmitted }) {
   const [hoverRating, setHoverRating] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [mine, setMine] = useState(null);
-  const [loadedMine, setLoadedMine] = useState(false);
-
-  // Load the reader's existing testimonial (if any) once.
-  useEffect(() => {
-    if (!isAuthenticated || loadedMine) return;
-    api
-      .get("/testimonials/me")
-      .then((res) => {
-        const data = res.data?.data;
-        if (data) {
-          setMine(data);
-          setMessage(data.message || "");
-          setRating(data.rating || 5);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoadedMine(true));
-  }, [isAuthenticated, loadedMine]);
 
   async function handleSubmit(e) {
     e.preventDefault();

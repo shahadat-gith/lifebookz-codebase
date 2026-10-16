@@ -20,25 +20,6 @@ export async function list(req, res, next) {
 }
 
 /**
- * GET /testimonials/me
- * The signed-in person's own testimonial (any of the three roles).
- */
-export async function mine(req, res, next) {
-  try {
-    const testimonial = await testimonialService.getMyTestimonial({
-      userId: req.user?.id,
-    });
-
-    res.json({
-      success: true,
-      data: testimonial,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
  * POST /testimonials
  * Authenticated users, authors and experts can leave a testimonial.
  */

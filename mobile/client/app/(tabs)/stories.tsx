@@ -25,6 +25,7 @@ import { StoryCardListSkeleton } from "../../src/components/Skeleton";
 import {
   EMPTY_FILTERS,
   GENDER_OPTIONS,
+  STORY_TYPE_OPTIONS,
   activeFilterCount,
   feedQuery,
   type FeedFilters,
@@ -39,6 +40,7 @@ export default function StoriesScreen() {
   const insets = useSafeAreaInsets();
 
   // Committed filters drive the request; `draft` is what the modal edits.
+  // The circular type chips commit immediately, straight into `filters`.
   const [filters, setFilters] = useState<FeedFilters>(EMPTY_FILTERS);
   const [draft, setDraft] = useState<FeedFilters>(EMPTY_FILTERS);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -137,13 +139,18 @@ export default function StoriesScreen() {
   const setDraftFilter = (key: keyof FeedFilters, value: string) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
 
+  /** The circular type chips commit immediately. */
+  function setTypeFilter(value: string) {
+    setFilters((prev) => ({ ...prev, storyType: value }));
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={["top"]}>
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.title, { color: theme.text }]}>Explore stories</Text>
           <Text style={[styles.subtitle, { color: theme.textMuted }]}>
-            Real lifebooks from authors around the world
+            Real stories from authors around the world
           </Text>
         </View>
         <Pressable
@@ -157,6 +164,62 @@ export default function StoriesScreen() {
             </View>
           )}
         </Pressable>
+      </View>
+
+      {/* Instagram-story style type filters — ringed circles with labels */}
+      <View style={styles.chipsRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: Spacing.lg, paddingHorizontal: Spacing.lg }}
+        >
+          {STORY_TYPE_OPTIONS.map((option) => {
+            const active = filters.storyType === option.value;
+            return (
+              <Pressable
+                key={option.value || "all"}
+                onPress={() => setTypeFilter(option.value)}
+                style={{ alignItems: "center", gap: 4 }}
+              >
+                <View
+                  style={[
+                    styles.typeRing,
+                    {
+                      borderColor: active ? theme.accent : theme.border,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.typeInner,
+                      { backgroundColor: theme.surface },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.typeGlyph,
+                        { color: active ? theme.accent : theme.textMuted },
+                      ]}
+                    >
+                      {option.value === ""
+                        ? "ALL"
+                        : option.label.slice(0, 2).toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+                <Text
+                  style={[
+                    styles.typeLabel,
+                    { color: active ? theme.accent : theme.textMuted },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {first.isLoading && stories.length === 0 ? (
@@ -286,6 +349,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   filterBadgeText: { color: "#fff", fontSize: 10, fontWeight: "700" },
+
+  chipsRow: { marginBottom: Spacing.sm },
+  typeRing: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 2.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  typeInner: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  typeGlyph: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
+  typeLabel: { fontSize: 11, fontWeight: "600", maxWidth: 66 },
 
   // Bottom-sheet filters
   sheetRoot: { flex: 1, justifyContent: "flex-end" },

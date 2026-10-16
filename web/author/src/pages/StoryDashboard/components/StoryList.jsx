@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { Icons } from "../../../icons";
 import { getTimeAgo } from "../../../utils/helpers";
-import { chapterLabel } from "../../../utils/chapters";
 import StoryTypeBadge from "../../../components/common/StoryTypeBadge";
 
 const FILTERS = [
@@ -138,7 +137,7 @@ export default function StoryList({
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
                       <Icons.book className="h-3 w-3" />
-                      {chapterLabel(row.chapter)}
+                      {row.story.chapterName || "Uncategorized"}
                     </span>
                     {row.mediaCount > 0 && (
                       <span className="inline-flex items-center gap-1">
@@ -161,7 +160,7 @@ export default function StoryList({
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1">
-                  {published && row.book?.slug && (
+                  {published && row.story?.slug && (
                     <button
                       type="button"
                       onClick={() => onView(row)}

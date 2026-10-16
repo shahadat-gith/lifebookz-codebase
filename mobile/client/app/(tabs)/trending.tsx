@@ -16,7 +16,7 @@ export default function TrendingScreen() {
   const trending = useQuery({
     queryKey: ["stories", "trending"],
     queryFn: async () => {
-      const res = await api.get("/stories", { params: { type: "trending" } });
+      const res = await api.get("/stories/trending");
       return (res.data.data?.stories || []) as Story[];
     },
   });

@@ -19,7 +19,7 @@ export default function HomePage() {
   const navigate = useNavigate();
   const { author, isLoading: authLoading } = useAuth();
   const authorId = author?.id || author?._id || null;
-  const feed = useStoryFeed({ excludeAuthorId: authorId });
+  const feed = useStoryFeed();
   const [testimonialKey, setTestimonialKey] = useState(0);
 
   useEffect(() => {

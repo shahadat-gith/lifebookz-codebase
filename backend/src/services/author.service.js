@@ -11,12 +11,11 @@ import {
 } from "../utils/errors.js";
 import { logger } from "./logger.service.js";
 import { deleteFile } from "./upload.service.js";
-import { sendApplicationSubmitted } from "../utils/admin.utils.js";
 import { accountToken } from "./user.service.js";
 
 const PUBLIC_AUTHOR_SELECT =
   // `roles` is included so a lean projection still passes the author check.
-  "fullName avatar coverImage createdAt role roles author";
+  "fullName avatar coverImage createdAt roles isAuthor author";
 
 /**
  * FormData sends nested objects as JSON strings — decode defensively.
@@ -48,9 +47,10 @@ async function findAuthorById(userId) {
 
 /**
  * One account serves every portal (sign-up lives in the client portal), so
- * the author portal accepts any existing account. A plain `user` who signs
- * in here is upgraded to `author` on the spot (application starts pending)
- * — the dashboard is where they complete their profile and publish.
+ * the author portal accepts any existing account and signs it in AS IS —
+ * logging in NEVER grants the author role. Upgrading happens deliberately
+ * (the publish-time upgrade form calls `upgradeToAuthor`), so a reader who
+ * only came to look around stays a reader.
  */
 export async function loginAuthor({ email, password, ip }) {
   let user = await User.findOne({ email }).select("+auth.passwordHash");
@@ -80,26 +80,60 @@ export async function loginAuthor({ email, password, ip }) {
     throw authenticationError(message, { password: message });
   }
 
-  // Implicit upgrade: any account coming through the author portal gains
-  // the author role (application pending) — including experts and authors
-  // of other kinds. Upgrades ADD to `roles` and never remove what the
-  // account already holds.
-  if (!user.roles?.includes("author")) {
-    const previousRole = user.role;
-    user.role = "author";
-    user.roles = [...(user.roles?.length ? user.roles : [user.role]), "author"];
-    user.author = user.author || {};
-    await user.save();
-    user = await User.findById(user.id);
+  // No side-effect upgrade here — the account keeps its current roles.
+  return { author: user, token: accountToken(user) };
+}
 
-    // Fire-and-forget: the freshly granted author role needs admin approval
-    // — tell the account the request is pending and what it unlocks.
-    sendApplicationSubmitted(user.email, user.fullName, "author").catch(
-      () => {},
-    );
+const UPGRADE_REQUIRED_FIELDS = [
+  { key: "profession", label: "profession" },
+  { key: "bio", label: "bio" },
+  { key: "phone", label: "phone" },
+  { key: "dob", label: "date of birth" },
+  { key: "gender", label: "gender" },
+];
+
+/**
+ * Deliberate author upgrade: grants the author role to any signed-in
+ * account once the publishing-critical profile fields are filled in. No
+ * admin review — completing the form IS the upgrade. The publish gate reads
+ * the root-level `isAuthor` flag, which the pre-validate hook keeps in
+ * lockstep with `roles`.
+ */
+export async function upgradeToAuthor({ userId, body }) {
+  const user = await findAuthorById(userId);
+
+  const alreadyAuthor = Boolean(user.roles?.includes("author"));
+
+  // Fields are applied on EVERY submission — including accounts that
+  // already hold the author role but never finished their profile.
+  const missing = UPGRADE_REQUIRED_FIELDS.filter(
+    ({ key }) => !String(body[key] || "").trim() && !(key === "dob" && user.author?.dob),
+  ).map(({ label }) => label);
+
+  if (missing.length > 0) {
+    throw validationError(`Please fill in: ${missing.join(", ")}.`);
   }
 
-  return { author: user, token: accountToken(user, user.role) };
+  if (!user.author) user.author = {};
+  const profile = user.author;
+
+  profile.profession = String(body.profession).trim();
+  profile.bio = String(body.bio).trim();
+  profile.phone = String(body.phone).trim();
+  profile.dob = profile.dob || new Date(body.dob);
+  profile.gender = body.gender;
+  if (body.address) profile.address = { ...(profile.address || {}), ...body.address };
+  if (body.socialLinks) profile.socialLinks = { ...(profile.socialLinks || {}), ...body.socialLinks };
+
+  if (!alreadyAuthor) {
+    // Upgrades ADD to `roles` and never remove what the account already
+    // holds; the validate hook syncs isAuthor from the array.
+    user.roles = [...(user.roles?.length ? user.roles : ["user"]), "author"];
+  }
+
+  await user.save();
+
+  return { user, alreadyAuthor };
 }
 
 export async function getMyAuthorProfile(userId) {
@@ -164,18 +198,8 @@ export async function updateAuthor({
     author.coverImage = coverImage;
   }
 
-  // Profile is considered complete once the publishing-critical fields are
-  // all filled in. Keeps existing true values sticky (admins/bans aside).
-  const profileDone = Boolean(
-    (profile.profession || "").trim() &&
-      (profile.bio || "").trim() &&
-      (profile.phone || "").trim() &&
-      profile.dob &&
-      profile.gender,
-  );
-  if (profileDone || profile.isProfileCompleted) {
-    profile.isProfileCompleted = profileDone;
-  }
+  // Upgraded-ness lives on the user's root `isAuthor` flag — profile edits
+  // never grant or revoke the role themselves.
 
   await author.save();
 
@@ -197,7 +221,7 @@ export async function getPublicAuthor({ authorId, viewerId } = {}) {
     .select(PUBLIC_AUTHOR_SELECT)
     .lean();
 
-  if (!author || !author.roles?.includes("author")) {
+  if (!author || !author.isAuthor) {
 
     throw notFoundError("Author not found.");
   }
@@ -227,6 +251,18 @@ export async function listMyStories({ authorId }) {
   return Story.find({ author: authorId }).sort({ updatedAt: -1 }).lean();
 }
 
+/** Same list, without the story documents' heavy rich-text content. */
+export async function listMyStorySummaries({ authorId }) {
+  if (!authorId) {
+    throw authenticationError("Authentication required.");
+  }
+
+  return Story.find({ author: authorId })
+    .select("-content")
+    .sort({ updatedAt: -1 })
+    .lean();
+}
+
 export async function getMyStory({ authorId, storyId }) {
   if (!authorId) {
     throw authenticationError("Authentication required.");
@@ -243,56 +279,44 @@ export async function getMyStory({ authorId, storyId }) {
 
 /**
  * Aggregated profile stats for the author's own profile page:
- * chapters, stories, and total likes received.
+ * stories, the chapters their grouping selects, and total likes received.
+ * One count query per number — all flat documents now.
  */
 export async function getMyAuthorStats({ authorId }) {
   if (!authorId) {
     throw authenticationError("Authentication required.");
   }
 
-  // Aggregations do not cast strings for us — an unmatched ObjectId would
-  // quietly report zero chapters and stories.
   const owner = new mongoose.Types.ObjectId(String(authorId));
 
-  const books = await Story.aggregate([
-      // Everything the author owns: the profile page counts drafts too.
+  const [stories, chapters, likes] = await Promise.all([
+    Story.countDocuments({ author: owner }),
+    Story.distinct("chapterName", {
+      author: owner,
+      chapterName: { $type: "string", $ne: "" },
+    }).then((names) => names.length),
+    Story.aggregate([
       { $match: { author: owner } },
-      {
-        $project: {
-          likes: { $ifNull: ["$stats.likes", 0] },
-          chapters: { $size: { $ifNull: ["$chapters", []] } },
-          stories: {
-            $sum: {
-              $map: {
-                input: { $ifNull: ["$chapters", []] },
-                as: "ch",
-                in: { $size: { $ifNull: ["$$ch.stories", []] } },
-              },
-            },
-          },
-        },
-      },
       {
         $group: {
           _id: null,
-          likes: { $sum: "$likes" },
-          chapters: { $sum: "$chapters" },
-          stories: { $sum: "$stories" },
+          likes: { $sum: { $ifNull: ["$stats.likes", 0] } },
         },
       },
+    ]),
   ]);
 
   return {
-    chapters: books[0]?.chapters || 0,
-    stories: books[0]?.stories || 0,
-    likes: books[0]?.likes || 0,
+    stories,
+    chapters,
+    likes: likes[0]?.likes || 0,
   };
 }
 
 export async function listApprovedAuthors() {
+  // No approval pipeline — every account holding the author role is listed.
   const listed = await User.find({
     roles: "author",
-    "author.verification.status": "approved",
   })
     .select("fullName avatar bio createdAt author")
     .sort({ createdAt: -1 })

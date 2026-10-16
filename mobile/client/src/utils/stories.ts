@@ -34,9 +34,15 @@ export function storyId(story?: Story | null) {
   return story?._id || story?.id || "";
 }
 
-/** A story's cover art: banner first, legacy coverImage second. */
+/** A story's cover art: banner first, legacy coverImage second, media third. */
 export function storyImage(story?: Story | null): string {
-  return mediaUrl(story?.bannerImage) || mediaUrl(story?.coverImage) || "";
+  return (
+    mediaUrl(story?.bannerImage) ||
+    mediaUrl(story?.coverImage) ||
+    ((story?.media || []) as { url?: string; type?: string }[])
+      .find((m) => m.type === "image" && m.url)?.url ||
+    ""
+  );
 }
 
 /**

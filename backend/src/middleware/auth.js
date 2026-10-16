@@ -46,64 +46,75 @@ export async function authenticate(req, _res, next) {
 
     const decoded = verifyToken(token);
 
-    switch (decoded.role) {
-      case "admin": {
-        if (!config.admin.key || decoded.key !== config.admin.key) {
-          throw authenticationError("Invalid admin token.");
+    // Tokens are array-based: { roles: ["user", "author"], userId } —
+    // `roles` is the user schema's only role field.
+    const decodedRoles = Array.isArray(decoded.roles) && decoded.roles.length > 0
+      ? decoded.roles
+      : [];
+
+    // Admin / developer tokens keep their dedicated shape.
+    if (decoded.role === "admin" || decoded.role === "developer") {
+      switch (decoded.role) {
+        case "admin": {
+          if (!config.admin.key || decoded.key !== config.admin.key) {
+            throw authenticationError("Invalid admin token.");
+          }
+
+          req.admin = true;
+          req.role = "admin";
+
+          return next();
         }
 
-        req.admin = true;
-        req.role = "admin";
+        case "developer": {
+          if (!config.developer.email || !config.developer.password) {
+            throw authenticationError(
+              "Developer access is not configured on this server.",
+            );
+          }
 
-        return next();
+          req.developer = true;
+          req.role = "developer";
+
+          return next();
+        }
+      }
+    }
+
+    if (
+      !decoded.userId ||
+      !decodedRoles.some((role) => ["user", "author", "expert"].includes(role))
+    ) {
+      throw authenticationError("Invalid token.");
+    }
+
+    {
+      const user = await User.findById(decoded.userId).select(
+        "-auth.passwordHash",
+      );
+
+      if (!user) {
+        throw authenticationError("Account no longer exists.");
       }
 
-      case "developer": {
-        if (!config.developer.email || !config.developer.password) {
-          throw authenticationError(
-            "Developer access is not configured on this server.",
-          );
-        }
-
-        req.developer = true;
-        req.role = "developer";
-
-        return next();
-      }
-
-      case "user":
-      case "author":
-      case "expert": {
-        if (!decoded.userId) {
-          throw authenticationError("Invalid token.");
-        }
-
-        const user = await User.findById(decoded.userId).select(
-          "-auth.passwordHash",
+      // Accounts created before the `status` field existed are treated as active.
+      if (user.status && user.status !== "active") {
+        throw authenticationError(
+          "This account is not active. Please contact support.",
         );
-
-        if (!user) {
-          throw authenticationError("Account no longer exists.");
-        }
-
-        // Accounts created before the `status` field existed are treated as active.
-        if (user.status && user.status !== "active") {
-          throw authenticationError(
-            "This account is not active. Please contact support.",
-          );
-        }
-
-        req.user = user;
-        req.role = user.role;
-        req.roles = Array.isArray(user.roles) && user.roles.length > 0
-          ? user.roles
-          : [user.role];
-
-        return next();
       }
 
-      default:
-        throw authenticationError("Invalid token.");
+      req.user = user;
+      // The fresh DB roles always win — a token minted before an upgrade
+      // must not keep stale permissions.
+      req.roles = Array.isArray(user.roles) && user.roles.length > 0
+        ? user.roles
+        : decodedRoles;
+      // `req.role` (primary, = newest entry) stays for logging and
+      // third-party reads; authorization itself is array-based.
+      req.role = req.roles[req.roles.length - 1];
+
+      return next();
     }
   } catch (error) {
     return next(error);
@@ -126,17 +137,21 @@ export async function optionalAuthenticate(req, _res, next) {
   try {
     const decoded = verifyToken(token);
 
-    if (["user", "author", "expert"].includes(decoded.role)) {
+    const decodedRoles = Array.isArray(decoded.roles) && decoded.roles.length > 0
+      ? decoded.roles
+      : [];
+
+    if (decodedRoles.some((role) => ["user", "author", "expert"].includes(role))) {
       const user = await User.findById(decoded.userId).select(
         "-auth.passwordHash",
       );
 
       if (user && (!user.status || user.status === "active")) {
         req.user = user;
-        req.role = user.role;
         req.roles = Array.isArray(user.roles) && user.roles.length > 0
           ? user.roles
-          : [user.role];
+          : decodedRoles;
+        req.role = req.roles[req.roles.length - 1];
       }
     }
   } catch {
@@ -172,12 +187,12 @@ export function authorize(...roles) {
 }
 
 /**
- * Publishing gate for authors: the profile must be completed (profession,
- * bio, phone, DOB, gender) before a story can be published. Writing, media
- * uploads and drafts are available without completing the profile.
+ * Publishing gate for authors: the account must be an upgraded author
+ * (root-level `isAuthor`, set by the upgrade form) before a story can be
+ * published. Writing, media uploads and drafts are available to everyone.
  */
 export function requireProfileComplete(req, _res, next) {
-  if (req.user?.author?.isProfileCompleted) {
+  if (req.user?.isAuthor) {
     return next();
   }
 

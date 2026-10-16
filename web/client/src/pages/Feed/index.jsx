@@ -2,14 +2,17 @@ import FilterModal from "./components/FilterModal";
 
 import FeedHeader from "./components/FeedHeader";
 import FeedList from "./components/FeedList";
+import TypeChips from "./components/TypeChips";
 import useFeed from "./hooks/useFeed";
 
 /**
- * Feed — published stories from the community.
+ * Feed — published stories from the community, one story per card.
  *
- * The filters live behind the icon in the header's top-right corner: the
- * modal edits a draft and only commits on "Show results", so narrowing the
- * feed is one request no matter how many controls were touched.
+ * The circular storyType chips ("all, career, experience, …") sit on top and
+ * commit immediately; the rest of the filters live behind the icon in the
+ * header's top-right corner: the modal edits a draft and only commits on
+ * "Show results", so narrowing the feed is one request no matter how many
+ * controls were touched.
  */
 export default function FeedPage() {
   const feed = useFeed();
@@ -19,6 +22,11 @@ export default function FeedPage() {
       <FeedHeader
         filterCount={feed.appliedCount}
         onOpenFilters={feed.openFilters}
+      />
+
+      <TypeChips
+        value={feed.draft?.storyType ?? ""}
+        onChange={feed.setTypeFilter}
       />
 
       <FeedList

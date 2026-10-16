@@ -29,6 +29,33 @@ export async function getMe(req, res, next) {
   }
 }
 
+/**
+ * PATCH /authors/me/upgrade — deliberate author upgrade from the publish
+ * flow. Signs the account up as a publishing author (no admin review) once
+ * the required profile fields are present, and returns a refreshed token
+ * carrying the new roles array.
+ */
+export async function upgradeMe(req, res, next) {
+  try {
+    const { user, alreadyAuthor } = await authorService.upgradeToAuthor({
+      userId: req.user?.id,
+      body: req.body,
+    });
+
+    const { accountToken } = await import("../services/user.service.js");
+
+    return res.json({
+      success: true,
+      message: alreadyAuthor
+        ? "You are already an author."
+        : "You're an author now — your profile is complete.",
+      data: { author: user, token: accountToken(user) },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function updateMe(req, res, next) {
   try {
     const author = await authorService.updateAuthor({
@@ -47,6 +74,23 @@ export async function updateMe(req, res, next) {
 export async function getMyStories(req, res, next) {
   try {
     const stories = await authorService.listMyStories({
+      authorId: req.user?.id,
+    });
+
+    return res.json({ success: true, data: stories });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /authors/me/stories/summaries — every story, content stripped.
+ * List views (profile tabs, dashboard tiles) render almost entirely from
+ * banner/title/meta, so skipping the heavy HTML shrinks the payload.
+ */
+export async function getMyStorySummaries(req, res, next) {
+  try {
+    const stories = await authorService.listMyStorySummaries({
       authorId: req.user?.id,
     });
 

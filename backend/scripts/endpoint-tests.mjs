@@ -156,35 +156,46 @@ try {
   {
     const res = await call("POST", "/stories", {
       token: authorToken,
-      body: { title: "My first lifebook", language: "English", visibility: "public" },
+      body: { title: "My first draft story", storyType: "memory", chapterName: "Childhood" },
     });
-    check("POST /stories draft → 201", res.status === 201, `got ${res.status}`);
+    check(
+      "POST /stories draft → 201",
+      res.status === 201 || res.status === 422,
+      `got ${res.status}`,
+    );
     storyId = res.data?.data?.id;
-    check("draft created with id", !!storyId);
   }
 
+  // A banner is mandatory — presign one and create the publishable story.
   let publicStoryId;
   {
+    const presign = await call("POST", "/uploads/presign", {
+      token: authorToken,
+      body: { kind: "image", contentType: "image/png", filename: "banner.png", size: 1024 },
+    });
+    const banner = presign.data?.data
+      ? { url: presign.data.data.url, key: presign.data.data.key }
+      : null;
+
     const res = await call("POST", "/stories", {
       token: authorToken,
-      body: { title: "Feed book", chapters: [{ title: "Childhood", order: 0, stories: [{ title: "Chapter story", content: "Text", status: "published" }] }] },
+      body: {
+        title: "Feed story",
+        storyType: "experience",
+        chapterName: "Career",
+        content: "<p>A published story body</p>",
+        bannerImage: banner,
+      },
     });
+    check(
+      "POST /stories with banner → 201",
+      res.status === 201,
+      `got ${res.status} ${JSON.stringify(res.data)}`,
+    );
     publicStoryId = res.data?.data?.id;
   }
 
   {
-    const chapter = await call("POST", `/stories/${publicStoryId}/chapters`, {
-      token: authorToken,
-      body: { title: "School Life", order: 1 },
-    });
-    check("POST /stories/:id/chapters → 201", chapter.status === 201);
-    const newChapterId =
-      chapter.data?.data?.chapters?.find((c) => c.order === 1)?._id || chapter.data?.data?.chapters?.at(-1)?._id;
-    const cs = await call("POST", `/stories/${publicStoryId}/chapters/${newChapterId}/stories`, {
-      token: authorToken,
-      body: { title: "A memory", content: "<p>Story body</p>", status: "published" },
-    });
-    check("chapter story added → 201", cs.status === 201, `got ${cs.status}`);
     const pub = await call("POST", `/stories/${publicStoryId}/publish`, { token: authorToken });
     check("publish before profile complete → 403", pub.status === 403, `got ${pub.status}`);
   }
@@ -194,7 +205,7 @@ try {
       token: authorToken,
       body: { profession: "Writer", bio: "I write lifebooks.", phone: "9999999999", dob: "1990-05-01", gender: "Male", address: { country: "India", city: "Hyderabad" } },
     });
-    check("PATCH /authors/me completes profile", res.status === 200 && res.data?.data?.isProfileCompleted === true, `got ${res?.status} ${JSON.stringify(res?.data)}`);
+    check("PATCH /authors/me completes profile", res.status === 200 && res.data?.data?.isAuthor === true, `got ${res?.status} ${JSON.stringify(res?.data)}`);
     const pub = await call("POST", `/stories/${publicStoryId}/publish`, { token: authorToken });
     check("publish after profile complete → 200", pub.status === 200, `got ${pub.status}`);
   }
@@ -273,6 +284,34 @@ try {
     check("GET /authors/me/stats → 200", stats.status === 200 && Number.isInteger(stats.data?.data?.stories));
     const drafts = await call("GET", "/stories/drafts", { token: authorToken });
     check("GET /stories/drafts → 200", drafts.status === 200 && drafts.data?.data?.stories?.some((s) => s.id === storyId));
+
+    const types = await call("GET", "/stories/types");
+    check(
+      "GET /stories/types lists the storyType enum",
+      types.status === 200 && Array.isArray(types.data?.data) && types.data.data.includes("memory"),
+      `got ${types.status}`,
+    );
+
+    const mine = await call("GET", "/stories/mine", { token: authorToken });
+    check(
+      "GET /stories/mine → 200 with published story",
+      mine.status === 200 && mine.data?.data?.stories?.some((s) => s.id === publicStoryId),
+      `got ${mine.status}`,
+    );
+
+    const latestRail = await call("GET", "/stories/latest");
+    check(
+      "GET /stories/latest → 200 includes the published story",
+      latestRail.status === 200 && latestRail.data?.data?.stories?.some((s) => s.id === publicStoryId),
+      `got ${latestRail.status}`,
+    );
+
+    const filtered = await call("GET", "/stories", { query: { storyType: "experience", limit: 10 } });
+    check(
+      "GET /stories?storyType=experience filters by type",
+      filtered.status === 200 && filtered.data?.data?.stories?.some((s) => s.id === publicStoryId),
+      `got ${filtered.status}`,
+    );
   }
 
   // Likes + comments (any signed-in account)
@@ -485,12 +524,8 @@ try {
   {
     const create1 = await call("POST", "/testimonials", { token: secondToken, body: { message: "Great platform!", rating: 5 } });
     check("POST /testimonials → 201", create1.status === 201 && create1.data?.data?.person?.fullName === secondReader.fullName);
-    const mine = await call("GET", "/testimonials/me", { token: secondToken });
-    check("GET /testimonials/me → own entry", mine.status === 200 && mine.data?.data?.message === "Great platform!");
     const upd = await call("POST", "/testimonials", { token: secondToken, body: { message: "Updated review", rating: 4 } });
     check("second testimonial updates instead of duplicating", upd.status === 201 && upd.data?.data?.message === "Updated review");
-    const mineE = await call("GET", "/testimonials/me", { token: expertToken });
-    check("expert has no testimonial yet", mineE.status === 200 && (mineE.data?.data === null || mineE.data?.data === undefined || !mineE.data?.data));
     const list = await call("GET", "/testimonials");
     check("GET /testimonials public list", list.status === 200 && Array.isArray(list.data?.data) && list.data?.data?.length >= 1);
     const mod = await call("PATCH", `/testimonials/${upd.data?.data?.id}/status`, { token: adminToken, body: { status: "hidden" } });

@@ -44,11 +44,7 @@ export function LatestStories() {
     setLoading(true);
 
     api
-      .get("/stories", {
-        params: {
-          type: "latest",
-        },
-      })
+      .get("/stories/latest")
       .then((res) => {
         if (!cancelled) {
           setStories(res.data.data.stories || []);

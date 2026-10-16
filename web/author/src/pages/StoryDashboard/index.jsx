@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 import useMyStories from "../../hooks/useMyStories";
 import * as storyApi from "../../utils/storyApi";
-import { apiErrorMessage, bookId, chapterId } from "../../utils/helpers";
+import { apiErrorMessage, storyEntryId } from "../../utils/helpers";
 import ErrorBanner from "../../components/common/ErrorBanner";
 import { Icons } from "../../icons";
 import {
@@ -16,15 +16,14 @@ import {
 } from "./utils";
 
 import DashboardStats from "./components/DashboardStats";
-import LifebookCard from "./components/LifebookCard";
-import StoryList from "./components/StoryList";
 import RecentLikers from "./components/RecentLikers";
+import StoryList from "./components/StoryList";
 
 /**
  * My Stories — one place for everything the author has written.
  *
- * The lifebooks are the single source of truth: the tiles, the cards and the
- * story list are all derived from the same loaded data, so no two views of the
+ * Stories are flat documents now; the tiles, the cards and the story list
+ * are all derived from the same loaded data, so no two views of the
  * dashboard can disagree.
  */
 export default function StoryDashboardPage() {
@@ -32,58 +31,40 @@ export default function StoryDashboardPage() {
   const { author } = useAuth();
   const authorId = author?.id || author?._id || null;
 
-  const { stories: books, setStories, loading, error, reload } = useMyStories({
+  const { stories, setStories, loading, error, reload } = useMyStories({
     enabled: Boolean(authorId),
   });
 
   const [removingId, setRemovingId] = useState(null);
 
-  const rows = useMemo(() => flattenStories(books), [books]);
-  const totals = useMemo(() => dashboardTotals(books), [books]);
-  const likers = useMemo(() => collectLikers(books), [books]);
+  const rows = useMemo(() => flattenStories(stories), [stories]);
+  const totals = useMemo(() => dashboardTotals(stories), [stories]);
+  const likers = useMemo(() => collectLikers(stories), [stories]);
 
-  const openEdit = (book, entryId) =>
+  const openEdit = (rowOrId) =>
     navigate(
-      `/stories/${bookId(book)}/edit${entryId ? `?story=${entryId}` : ""}`,
+      typeof rowOrId === "object"
+        ? `/stories/${storyEntryId(rowOrId.story)}/edit`
+        : `/stories/${rowOrId}/edit`,
     );
 
-  const openStory = (book) => navigate(`/feed/story/${book.slug}`);
+  const openStory = (row) =>
+    row.story?.slug && navigate(`/feed/story/${row.story.slug}`);
 
-  /** Remove one story from its chapter — drafts and published alike. */
+  /** Remove one story — drafts and published alike. */
   async function handleRemove(row) {
     const title = row.story.title || "Untitled";
     if (!window.confirm(`Remove “${title}”? This cannot be undone.`)) return;
 
-    const previous = books;
+    const id = storyEntryId(row.story);
+    const previous = stories;
     setRemovingId(row.id);
 
     // Drop it immediately so the tiles and lists move together.
-    setStories((prev) =>
-      prev.map((book) =>
-        bookId(book) !== bookId(row.book)
-          ? book
-          : {
-              ...book,
-              chapters: (book.chapters || []).map((chapter) =>
-                chapterId(chapter) !== chapterId(row.chapter)
-                  ? chapter
-                  : {
-                      ...chapter,
-                      stories: (chapter.stories || []).filter(
-                        (s) => (s._id || s.id) !== row.id,
-                      ),
-                    },
-              ),
-            },
-      ),
-    );
+    setStories((prev) => prev.filter((story) => storyEntryId(story) !== id));
 
     try {
-      await storyApi.deleteChapterStory(
-        bookId(row.book),
-        chapterId(row.chapter),
-        row.id,
-      );
+      await storyApi.remove(id);
       toast.success("Story removed");
     } catch (err) {
       setStories(previous);
@@ -136,25 +117,6 @@ export default function StoryDashboardPage() {
         />
       )}
 
-      {/* ═══════════ Your lifebooks ═══════════ */}
-      {books.length > 0 && (
-        <section className="mt-6">
-          <h2 className="mb-3 font-display text-base font-bold text-foreground">
-            Your lifebooks
-          </h2>
-          <div className="space-y-3.5">
-            {books.map((book) => (
-              <LifebookCard
-                key={bookId(book)}
-                book={book}
-                onEdit={(b) => openEdit(b)}
-                onView={openStory}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* ═══════════ Stories + activity ═══════════ */}
       {/* min-w-0 on both columns: grid items refuse to shrink below their
           content's intrinsic width otherwise, which overflows on phones. */}
@@ -164,8 +126,8 @@ export default function StoryDashboardPage() {
             rows={rows}
             loading={loading}
             removingId={removingId}
-            onEdit={(row) => openEdit(row.book, row.id)}
-            onView={(row) => row.book?.slug && openStory(row.book)}
+            onEdit={(row) => openEdit(row)}
+            onView={(row) => row.story?.slug && openStory(row)}
             onRemove={handleRemove}
           />
         </div>

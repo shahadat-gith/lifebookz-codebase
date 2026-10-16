@@ -6,18 +6,19 @@ import toast from "react-hot-toast";
 import api from "../../config/api";
 import { useAuth } from "../../context/AuthContext";
 import { Icons } from "../../icons";
-import { sortChapters } from "../../utils/chapters";
 import { isVerifiedAuthor } from "../../utils/authors";
 
 import CommentSection from "./components/CommentSection";
 import StoryDetailSkeleton from "./components/StoryDetailSkeleton";
-import ChapterCard from "./components/ChapterCard";
 import StoryActions from "./components/StoryActions";
 import StoryNotFound from "./components/StoryNotFound";
+import StoryMedia from "./components/StoryMedia";
+import RichText from "../../components/common/RichText";
 
 /**
- * A lifebook, read top to bottom: its title, its author, every chapter in
- * order, then the actions and the comments.
+ * A story, read top to bottom: its banner, its title, its author, when and
+ * where it happened, its pictures and then what was written — then the
+ * actions and the comments.
  *
  * The page owns the reading state (the optimistic like, the comment anchor);
  * every block below the title is its own component.
@@ -119,7 +120,6 @@ export default function StoryDetailPage() {
   if (error || !story) return <StoryNotFound message={error} />;
 
   const author = story.author || {};
-  const sortedChapters = sortChapters(story.chapters);
 
   return (
     <motion.div
@@ -135,6 +135,8 @@ export default function StoryDetailPage() {
         <Icons.chevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
         Back to Feed
       </Link>
+
+      {/* The banner stays on cards only — the reader starts at the title. */}
 
       <h1 className="mt-5 font-display text-3xl font-extrabold leading-[1.15] tracking-tight text-primary sm:text-4xl">
         {story.title || "Untitled Story"}
@@ -159,16 +161,46 @@ export default function StoryDetailPage() {
         </Link>
       </p>
 
-      {/* Every chapter of the lifebook, in order, one after another */}
-      {sortedChapters.length === 0 ? (
-        <p className="mt-8 text-sm italic text-muted-foreground">
-          This story has no chapters yet.
-        </p>
-      ) : (
-        sortedChapters.map((chapter, index) => (
-          <ChapterCard key={chapter._id || index} chapter={chapter} />
-        ))
+      {/* When / where + type + chapter meta */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+        {story.dateLabel && (
+          <span className="inline-flex items-center gap-1">
+            <Icons.clock className="h-3.5 w-3.5" />
+            {story.dateLabel}
+          </span>
+        )}
+        {story.location && (
+          <span className="inline-flex items-center gap-1">
+            <Icons.globe className="h-3.5 w-3.5" />
+            {story.location}
+          </span>
+        )}
+        {story.storyType && (
+          <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-accent">
+            {(story.storyType || "").replace(/_/g, " ")}
+          </span>
+        )}
+        {story.chapterName && (
+          <span className="rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            {story.chapterName}
+          </span>
+        )}
+      </div>
+
+      {/* Media — the story's own pictures, if any */}
+      {(story.media || []).length > 0 && (
+        <div className="mt-6">
+          <StoryMedia media={story.media} />
+        </div>
       )}
+
+      {/* The story itself — rich text rendered, never raw HTML tags */}
+      <div className="mt-6">
+        <RichText
+          content={story.content}
+          className="text-[15px] leading-relaxed text-foreground/90"
+        />
+      </div>
 
       <StoryActions
         liked={liked}

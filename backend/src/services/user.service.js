@@ -15,8 +15,11 @@ import { logger } from "./logger.service.js";
 import { deleteFile } from "./upload.service.js";
 
 // One user table, one token shape for every account type.
-export function accountToken(user, role) {
-  return generateToken({ role, userId: user.id });
+// The token carries the account's FULL role list — one account may be a
+// reader and an author and an expert at once — so middleware authorization
+// is array-based (`roles`), which is the user schema's only role field.
+export function accountToken(user) {
+  return generateToken({ roles: user.roles || ["user"], userId: user.id });
 }
 
 /**
@@ -45,7 +48,7 @@ export async function registerUser({ email, password, fullName }) {
 
   sendWelcomeMail({ to: user.email, name: user.fullName, role: "user" });
 
-  return { user, token: accountToken(user, "user") };
+  return { user, token: accountToken(user) };
 }
 
 export async function loginUser({ email, password, ip }) {
@@ -76,7 +79,7 @@ export async function loginUser({ email, password, ip }) {
     throw authenticationError(message, { password: message });
   }
 
-  return { user, token: accountToken(user, user.role) };
+  return { user, token: accountToken(user) };
 }
 
 export async function getUserById(userId) {

@@ -1,4 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { Image } from "expo-image";
 import { useQuery } from "@tanstack/react-query";
 import {
   Pressable,
@@ -26,7 +27,6 @@ import {
   commentLikedByMe,
   isVerifiedAuthor,
   mediaUrl,
-  sortChapters,
   storyId,
 } from "../../src/utils/stories";
 import type { Comment, Story } from "../../src/types";
@@ -114,7 +114,6 @@ export default function StoryDetailScreen() {
     );
   }
 
-  const chapters = sortChapters(story.chapters);
   const commentCount = story.stats?.comments || 0;
 
   return (
@@ -146,65 +145,49 @@ export default function StoryDetailScreen() {
           )}
         </Pressable>
 
-        {/* Chapters — each chapter carries a list of story entries, and the
-            entry holds the HTML content. */}
-        {chapters.length === 0 ? (
-          <Text style={[styles.noChapters, { color: theme.textMuted }]}>
-            This story has no chapters yet.
-          </Text>
-        ) : (
-          chapters.map((chapter, index) => {
-            const entries =
-              chapter.stories && chapter.stories.length > 0
-                ? chapter.stories
-                : chapter.content
-                  ? [{ title: chapter.title, content: chapter.content }]
-                  : [];
-            return (
-              <View key={chapter._id || chapter.id || index} style={styles.chapter}>
-                {chapter.title ? (
-                  <Text style={[styles.chapterTitle, { color: theme.text }]}>
-                    {chapter.title}
-                  </Text>
-                ) : null}
-                {entries.length === 0 ? (
-                  <Text style={[styles.chapterBody, { color: theme.textMuted, fontStyle: "italic" }]}>
-                    Nothing written in this chapter yet.
-                  </Text>
-                ) : (
-                  entries.map((entry, entryIndex) => {
-                    const entryContent = stripHtml(entry.content);
-                    return (
-                      <View
-                        key={entry._id || entry.id || entryIndex}
-                        style={[
-                          styles.entry,
-                          { backgroundColor: theme.surface, borderColor: theme.border },
-                        ]}
-                      >
-                        {entry.title ? (
-                          <Text style={[styles.entryTitle, { color: theme.text }]}>
-                            {entry.title}
-                          </Text>
-                        ) : null}
-                        {entry.dateLabel || entry.location ? (
-                          <Text style={[styles.entryMeta, { color: theme.textMuted }]}>
-                            {[entry.dateLabel, entry.location].filter(Boolean).join(" · ")}
-                          </Text>
-                        ) : null}
-                        {entryContent ? (
-                          <Text style={[styles.chapterBody, { color: theme.text }]}>
-                            {entryContent}
-                          </Text>
-                        ) : null}
-                      </View>
-                    );
-                  })
-                )}
-              </View>
-            );
-          })
-        )}
+        {/* Meta: when / where + type + chapter */}
+        <View style={styles.metaRow}>
+          {story.chapterName ? (
+            <Text style={[styles.metaChip, { color: theme.textMuted }]}>
+              {story.chapterName}
+            </Text>
+          ) : null}
+          {story.storyType ? (
+            <Text style={[styles.metaChip, { color: theme.accent }]}>
+              {story.storyType.replace(/_/g, " ").toUpperCase()}
+            </Text>
+          ) : null}
+        </View>
+
+        {/* The banner stays on cards only — the reader opens at the text. */}
+        {(() => {
+          const shownMedia = (story.media || []).filter(
+            (m: any) => m.type === "image" && mediaUrl(m),
+          );
+          return shownMedia.length > 0 ? (
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              style={styles.mediaRow}
+            >
+              {shownMedia.map((m: any, i: number) => (
+                <Image
+                  key={i}
+                  source={{ uri: mediaUrl(m) }}
+                  style={styles.mediaItem}
+                  contentFit="cover"
+                  transition={200}
+                />
+              ))}
+            </ScrollView>
+          ) : null;
+        })()}
+
+        {/* The story itself */}
+        <Text style={[styles.chapterBody, { color: theme.text }]}>
+          {stripHtml(story.content)}
+        </Text>
 
         {/* Actions */}
         <View style={[styles.actions, { borderTopColor: theme.border }]}>
@@ -424,6 +407,21 @@ const styles = StyleSheet.create({
   byline: { flexDirection: "row", alignItems: "center", gap: Spacing.sm, marginTop: Spacing.lg },
   bylineText: { fontSize: 13 },
   noChapters: { fontStyle: "italic", marginTop: Spacing.xl, fontSize: 14 },
+
+  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm, marginTop: Spacing.md },
+  metaChip: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  mediaRow: { marginTop: Spacing.lg },
+  mediaItem: {
+    width: 300,
+    height: 180,
+    borderRadius: Radius.lg,
+    marginRight: Spacing.md,
+  },
 
   chapter: { marginTop: Spacing.xl },
   chapterTitle: { fontSize: 18, fontWeight: "700", marginBottom: Spacing.sm },

@@ -16,7 +16,7 @@ export default function useStoryFeed({ limit = 10, excludeAuthorId = null } = {}
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get("/stories", { params: { type: "latest", limit } });
+      const res = await api.get("/stories/latest", { params: { limit } });
       const rows = res.data?.data?.stories || [];
       setStories(
         rows.filter((s) => String(s.author?._id || s.author?.id || s.author) !== String(excludeAuthorId)),

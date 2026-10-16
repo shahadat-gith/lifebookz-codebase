@@ -37,49 +37,6 @@ export async function dashboard(_req, res, next) {
   }
 }
 
-export async function getPendingAuthors(_req, res, next) {
-  try {
-    const authors = await adminService.listPendingAuthors();
-
-    return res.json({ success: true, data: authors });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function approveAuthor(req, res, next) {
-  try {
-    const author = await adminService.approveAuthor({
-      authorId: req.params.authorId,
-    });
-
-    return res.json({
-      success: true,
-      message: "Author approved successfully.",
-      data: author,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function rejectAuthor(req, res, next) {
-  try {
-    const author = await adminService.rejectAuthor({
-      authorId: req.params.authorId,
-      reason: req.body.reason,
-    });
-
-    return res.json({
-      success: true,
-      message: "Author rejected successfully.",
-      data: author,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
 export async function getApprovedAuthors(_req, res, next) {
   try {
     const authors = await adminService.listApprovedAuthors();

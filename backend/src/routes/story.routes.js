@@ -10,12 +10,12 @@ import * as story from "../controllers/story.controller.js";
 
 const router = Router();
 
-// Writing requires an authenticated author account. Approval is NOT required —
-// authors can write, upload media and manage drafts while pending; only
-// publishing is gated further (profile completion).
-const authorOnly = [authenticate, authorize("author")];
+// Writing is open to any signed-in account: a reader can start a story,
+// and the author role is granted at publish time through the upgrade
+// form — no separate application step.
+const authorOnly = [authenticate, authorize("user", "author", "expert")];
 // Any signed-in account can read along: liking, commenting and sharing a
-// story are reader actions, and authors read each other's lifebooks too.
+// story are reader actions, and authors read each other's stories too.
 const anyAccount = [authenticate, authorize("user", "author", "expert")];
 
 // File bytes never reach this server — every upload (banner, story media,
@@ -28,10 +28,18 @@ router.post("/", authorOnly, story.create);
 // without ever blocking an anonymous one.
 router.get("/", optionalAuthenticate, story.list);
 
+// Vocabulary for the circular feed filters + the author select.
+router.get("/types", story.getTypes);
+
 // Distinct author professions — the filter modal's options.
 router.get("/professions", story.getProfessions);
 
+// Curated rails for the home screens (web + mobile) — no paging needed.
+router.get("/latest", optionalAuthenticate, story.getLatest);
+router.get("/trending", optionalAuthenticate, story.getTrending);
+
 router.get("/drafts", authorOnly, story.getDrafts);
+router.get("/mine", authorOnly, story.getMine);
 
 router.get("/:storyId", optionalAuthenticate, story.getStory);
 router.patch("/:storyId", authorOnly, story.update);
@@ -48,31 +56,6 @@ router.post(
 );
 
 router.post("/:storyId/unpublish", authorOnly, story.unpublish);
-
-router.post("/:storyId/chapters", authorOnly, story.addChapter);
-
-// Rename a chapter — the title is the author's own
-router.patch("/:storyId/chapters/:chapterId", authorOnly, story.updateChapter);
-
-router.delete("/:storyId/chapters/:chapterId", authorOnly, story.deleteChapter);
-
-router.post(
-  "/:storyId/chapters/:chapterId/stories",
-  authorOnly,
-  story.addChapterStory,
-);
-
-router.patch(
-  "/:storyId/chapters/:chapterId/stories/:storyEntryId",
-  authorOnly,
-  story.updateChapterStory,
-);
-
-router.delete(
-  "/:storyId/chapters/:chapterId/stories/:storyEntryId",
-  authorOnly,
-  story.deleteChapterStory,
-);
 
 router.post("/:storyId/like", anyAccount, story.toggleLike);
 

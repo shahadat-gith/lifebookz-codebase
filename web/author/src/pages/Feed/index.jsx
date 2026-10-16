@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 
 import api from "../../config/api";
-import { useAuth } from "../../context/AuthContext";
 import EmptyState from "../../components/common/EmptyState";
 import { Icons } from "../../icons";
 
 import FilterButton from "./components/FilterButton";
 import FilterModal from "./components/FilterModal";
+import TypeChips from "./components/TypeChips";
 import StoryCard from "../../components/story/StoryCard";
 import StoryCardSkeleton from "./components/StoryCardSkeleton";
 import EndOfFeed from "./components/EndOfFeed";
@@ -26,8 +26,6 @@ import {
  * feed is one request no matter how many controls were touched.
  */
 export default function FeedPage() {
-  const { author: viewer } = useAuth();
-  const viewerId = viewer?.id || viewer?._id;
 
   const [stories, setStories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,19 +66,12 @@ export default function FeedPage() {
       });
 
       const data = res.data.data;
-      const received = data.stories || [];
-
-      // The feed is about other people's lives, never the reader's own. The
-      // list endpoint is public, so the reader's own id is the only reliable
-      // way to leave their stories out — the response doesn't carry one.
-      const batch = viewerId
-        ? received.filter((s) => String(s.author?._id) !== String(viewerId))
-        : received;
+      const batch = data.stories || [];
 
       setStories((prev) => (append ? [...prev, ...batch] : batch));
       // "Is there another page" is about what the API returned, not about what
-      // survived the filter above.
-      setHasMore(received.length === PAGE_SIZE);
+      // survived any client-side filter.
+      setHasMore(batch.length === PAGE_SIZE);
       setPage(nextPage);
     } catch {
       // The empty state covers a failed load.
@@ -98,7 +89,7 @@ export default function FeedPage() {
     filters.profession,
     filters.gender,
     filters.authorName,
-    viewerId,
+    filters.storyType,
   ]);
 
   // Infinite scroll
@@ -139,6 +130,11 @@ export default function FeedPage() {
     setFilterOpen(false);
   }
 
+  /** The circular type chips commit immediately. */
+  function setTypeFilter(value) {
+    setFilters((prev) => ({ ...prev, storyType: value }));
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 pb-28 sm:px-6 md:py-10 md:pb-10">
       <motion.div
@@ -159,6 +155,8 @@ export default function FeedPage() {
           <FilterButton count={appliedCount} onClick={openFilters} />
         </div>
       </motion.div>
+
+      <TypeChips value={filters.storyType} onChange={setTypeFilter} />
 
       {loading && stories.length === 0 ? (
         <div className="space-y-5">

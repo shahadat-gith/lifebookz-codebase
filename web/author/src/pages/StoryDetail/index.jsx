@@ -4,17 +4,19 @@ import { motion } from "framer-motion";
 
 import api from "../../config/api";
 import { useAuth } from "../../context/AuthContext";
-import { sortChapters } from "../../utils/chapters";
 import { Icons } from "../../icons";
 import { isVerifiedAuthor } from "../../utils/authors";
 
-import ChapterCard from "./components/ChapterCard";
+import RichText from "../../components/common/RichText";
 import StoryActions from "./components/StoryActions";
 import CommentSection from "./components/CommentSection";
 import StorySkeleton from "./components/StorySkeleton";
 import StoryMissing from "./components/StoryMissing";
 
-
+/**
+ * A story, read top to bottom — one flat document now: banner, title,
+ * author, meta, media, content, then the actions and the comments.
+ */
 export default function StoryDetailPage() {
   const { slug } = useParams();
   const { author: viewer } = useAuth();
@@ -58,8 +60,6 @@ export default function StoryDetailPage() {
     viewerId && author._id && String(viewerId) === String(author._id),
   );
 
-  const sortedChapters = sortChapters(story.chapters);
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -76,7 +76,9 @@ export default function StoryDetailPage() {
         Back to Feed
       </Link>
 
-      {/* Title of the lifebook, with its author right underneath */}
+      {/* The banner stays on cards only — the reader starts at the title. */}
+
+      {/* Title of the story, with its author right underneath */}
       <h1 className="mt-5 font-display text-3xl font-extrabold leading-[1.15] tracking-tight text-primary sm:text-4xl">
         {story.title || "Untitled Story"}
       </h1>
@@ -98,16 +100,62 @@ export default function StoryDetailPage() {
         </Link>
       </p>
 
-      {/* Every chapter of the lifebook, in order, one after another */}
-      {sortedChapters.length === 0 ? (
-        <p className="mt-8 text-sm italic text-muted-foreground">
-          This story has no chapters yet.
-        </p>
-      ) : (
-        sortedChapters.map((chapter, index) => (
-          <ChapterCard key={chapter._id || index} chapter={chapter} />
-        ))
+      {/* Meta: when / where + type + chapter */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+        {story.dateLabel && (
+          <span className="inline-flex items-center gap-1">
+            <Icons.clock className="h-3.5 w-3.5" />
+            {story.dateLabel}
+          </span>
+        )}
+        {story.location && (
+          <span className="inline-flex items-center gap-1">
+            <Icons.globe className="h-3.5 w-3.5" />
+            {story.location}
+          </span>
+        )}
+        {story.storyType && (
+          <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-accent">
+            {story.storyType.replace(/_/g, " ")}
+          </span>
+        )}
+        {story.chapterName && (
+          <span className="rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            {story.chapterName}
+          </span>
+        )}
+      </div>
+
+      {/* Media — the story's own pictures with their captions, if any */}
+      {(story.media || []).length > 0 && (
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {story.media.map((m, i) => (
+            <div key={i}>
+              {m.type === "video" ? (
+                <video src={m.url} controls className="w-full rounded-xl bg-black" />
+              ) : (
+                <img
+                  src={m.url}
+                  alt={m.caption || "Story media"}
+                  loading="lazy"
+                  className="w-full rounded-xl object-cover"
+                />
+              )}
+              {m.caption && (
+                <p className="mt-1 text-xs italic text-muted-foreground">
+                  {m.caption}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
       )}
+
+      {/* The story itself — rich text rendered, never raw HTML tags */}
+      <RichText
+        content={story.content}
+        className="mt-6 text-[15px] leading-relaxed text-foreground/90"
+      />
 
       {/* Like · Comment · Share — the same actions readers get */}
       <StoryActions story={story} onComment={scrollToComments} />

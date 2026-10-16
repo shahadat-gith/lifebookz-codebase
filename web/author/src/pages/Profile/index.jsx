@@ -4,146 +4,56 @@ import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 
 import { useAuth } from "../../context/AuthContext";
-import useMyStories from "../../hooks/useMyStories";
-import useSocialStats from "../../hooks/useSocialStats";
-import * as storyApi from "../../utils/storyApi";
-import { apiErrorMessage, bookId, chapterId, storyEntryId } from "../../utils/helpers";
-import { visibilitySavedMessage } from "../../utils/visibility";
+import { Icons } from "../../icons";
 import ErrorBanner from "../../components/common/ErrorBanner";
 import EmptyState from "../../components/common/EmptyState";
-import { Icons } from "../../icons";
 
 import ProfileHeader from "./components/ProfileHeader";
-import StatsRow from "./components/StatsRow";
-import ProfileTabs from "./components/ProfileTabs";
-import LifebookTab from "./components/LifebookTab";
-import StoriesTab from "./components/StoriesTab";
-import MemoriesTab from "./components/MemoriesTab";
-import LikesTab from "./components/LikesTab";
-import ActivityTab from "./components/ActivityTab";
-import { PROFILE_TABS, chapterRows, profileStats } from "./utils";
+import StoryTypeBadge from "../../components/common/StoryTypeBadge";
+import { apiErrorMessage } from "../../utils/helpers";
+import * as storyApi from "../../utils/storyApi";
 
 /**
- * The author's own profile: their header, their numbers, and their lifebook
- * chapter by chapter.
+ * The author's own profile: their identity only.
  *
- * The lifebooks are loaded once here and every tab renders from that, so the
- * counts and the lists can never drift apart. Each edit is optimistic and
- * rolled back if the API rejects it.
+ * Story management lives on the dedicated My Stories page, so this screen
+ * shows the header, the publish-readiness prompt and a small preview of the
+ * most recent stories with a link through.
  */
 export default function ProfilePage() {
   const { author } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  const { stories, setStories, loading, error, reload } = useMyStories({
-    enabled: Boolean(author),
-  });
-  const social = useSocialStats({ enabled: Boolean(author) });
+  useMyRedirect(searchParams, navigate);
 
-  const [activeTab, setActiveTab] = useState("lifebook");
+  // A light recent-stories preview from the My Stories endpoint.
+  const [recent, setRecent] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // ?complete=1&redirect=<path> → profile editing lives on its own page now,
-  // which also handles the "come back and publish" return trip.
+  async function reload() {
+    if (!author) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await storyApi.getMyStories();
+      setRecent((data.stories || []).slice(0, 4));
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    if (!searchParams.get("complete")) return;
-
-    const redirect = searchParams.get("redirect");
-    navigate(
-      `/profile/edit?complete=1${redirect ? `&redirect=${encodeURIComponent(redirect)}` : ""}`,
-      { replace: true },
-    );
-  }, [searchParams, navigate]);
-
-  const rows = useMemo(() => chapterRows(stories), [stories]);
-  const stats = useMemo(() => profileStats(rows, social.stats), [rows, social.stats]);
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [author?.id || author?._id]);
 
   if (!author) return <Navigate to="/login" replace />;
 
-  /* ---------- Actions ---------- */
-
-  /** Apply a change to one chapter of one lifebook, optimistically. */
-  function updateChapterIn(book, chapter, updater) {
-    setStories((prev) =>
-      prev.map((candidate) =>
-        bookId(candidate) !== bookId(book)
-          ? candidate
-          : {
-              ...candidate,
-              chapters: (candidate.chapters || []).map((entry) =>
-                chapterId(entry) === chapterId(chapter) ? updater(entry) : entry,
-              ),
-            },
-      ),
-    );
-  }
-
-  /** Rename a chapter — the title is the author's own. */
-  async function handleRenameChapter(book, chapter, title) {
-    const clean = title.trim();
-    if (!clean || clean === chapter.title) return;
-
-    const previous = stories;
-    updateChapterIn(book, chapter, (entry) => ({ ...entry, title: clean }));
-
-    try {
-      await storyApi.updateChapter(bookId(book), chapterId(chapter), {
-        title: clean,
-      });
-      toast.success("Chapter renamed");
-    } catch {
-      setStories(previous);
-      toast.error("Failed to rename chapter");
-    }
-  }
-
-  /**
-   * Change one story's visibility — visibility is a story's own choice, so
-   * each entry in a chapter can be shared with a different audience.
-   */
-  async function handleStoryVisibility(book, chapter, id, visibility) {
-    updateChapterIn(book, chapter, (entry) => ({
-      ...entry,
-      stories: (entry.stories || []).map((story) =>
-        storyEntryId(story) === id ? { ...story, visibility } : story,
-      ),
-    }));
-
-    try {
-      await storyApi.updateChapterStory(bookId(book), chapterId(chapter), id, {
-        visibility,
-      });
-      toast.success(visibilitySavedMessage(visibility));
-    } catch {
-      toast.error("Failed to update story visibility");
-      reload();
-    }
-  }
-
-  /**
-   * Permanently remove one story from a chapter. Drafts and published stories
-   * alike — authors keep full control of their lifebook.
-   */
-  async function handleDeleteStory(book, chapter, id) {
-    const previous = stories;
-    // Drop it immediately so the count moves with the removal.
-    updateChapterIn(book, chapter, (entry) => ({
-      ...entry,
-      stories: (entry.stories || []).filter(
-        (story) => storyEntryId(story) !== id,
-      ),
-    }));
-
-    try {
-      await storyApi.deleteChapterStory(bookId(book), chapterId(chapter), id);
-      toast.success("Story removed");
-    } catch (err) {
-      setStories(previous);
-      toast.error(apiErrorMessage(err, "Could not remove that story."));
-    }
-  }
-
-  async function handleShare() {
+  function handleShare() {
     const url = `${window.location.origin}/authors/${author.id || author._id}`;
     if (navigator.share) {
       navigator.share({ title: author.fullName, url }).catch(() => {});
@@ -152,13 +62,6 @@ export default function ProfilePage() {
       toast.success("Profile link copied");
     }
   }
-
-  /** The empty state each tab shows when it has nothing to list. */
-  const renderEmpty = (Icon, label, hint) => (
-    <EmptyState variant="panel" icon={Icon} title={label} description={hint} />
-  );
-
-  const showSkeleton = loading && rows.length === 0;
 
   return (
     <motion.div
@@ -174,8 +77,8 @@ export default function ProfilePage() {
         onEdit={() => navigate("/profile/edit")}
       />
 
-      {/* Prompt for authors who still need to finish their profile */}
-      {!author.isProfileCompleted && (
+      {/* Prompt for non-upgraded accounts: publish lives behind isAuthor */}
+      {!author.isAuthor && (
         <div className="mx-auto mt-4 max-w-4xl px-4 sm:px-6">
           <button
             type="button"
@@ -191,17 +94,13 @@ export default function ProfilePage() {
         </div>
       )}
 
-      <div className="mx-auto mt-6 max-w-4xl px-4 sm:px-6">
-        <StatsRow stats={stats} loading={loading || social.loading} />
-      </div>
-
       {error && (
         <div className="mx-auto mt-4 max-w-4xl px-4 sm:px-6">
           <ErrorBanner
             error={error}
             message={apiErrorMessage(
               error,
-              "We couldn't load your lifebook. Please try again.",
+              "We couldn't load your stories. Please try again.",
             )}
             onRetry={reload}
           />
@@ -209,48 +108,126 @@ export default function ProfilePage() {
       )}
 
       <div className="mx-auto mt-6 max-w-4xl px-4 sm:px-6">
-        <ProfileTabs tabs={PROFILE_TABS} active={activeTab} onChange={setActiveTab} />
-      </div>
-
-      <div className="mx-auto mt-6 max-w-4xl px-4 sm:px-6">
-        {showSkeleton ? (
-          <div className="space-y-3.5" aria-busy="true">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="h-[92px] animate-pulse rounded-2xl border border-border/60 bg-card"
-              />
-            ))}
+        {/* My Stories preview card */}
+        <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-xs">
+          <div className="flex items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={() => navigate("/my-stories")}
+              className="group inline-flex min-w-0 items-center gap-2 text-foreground"
+            >
+              <Icons.book className="h-4 w-4 flex-shrink-0 text-primary" />
+              <span className="truncate font-display text-lg font-bold">
+                My Stories
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/stories/new")}
+              className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground transition-colors hover:brightness-110"
+            >
+              <Icons.plus className="h-3.5 w-3.5" />
+              New story
+            </button>
           </div>
-        ) : (
-          <>
-            {activeTab === "lifebook" && (
-              <LifebookTab
-                chapterRows={rows}
-                onAddChapter={() => navigate("/stories/new")}
-                onEditStory={(book, id) =>
-                  navigate(`/stories/${bookId(book)}/edit?story=${id}`)
-                }
-                onDeleteStory={handleDeleteStory}
-                onStoryVisibility={handleStoryVisibility}
-                onRenameChapter={handleRenameChapter}
-              />
-            )}
-            {activeTab === "stories" && (
-              <StoriesTab chapterRows={rows} empty={renderEmpty} />
-            )}
-            {activeTab === "memories" && (
-              <MemoriesTab chapterRows={rows} empty={renderEmpty} />
-            )}
-            {activeTab === "likes" && (
-              <LikesTab total={social.stats?.likes ?? 0} empty={renderEmpty} />
-            )}
-            {activeTab === "activity" && (
-              <ActivityTab chapterRows={rows} empty={renderEmpty} />
-            )}
-          </>
-        )}
+
+          {loading ? (
+            <div className="mt-4 space-y-2.5" aria-busy="true">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-14 animate-pulse rounded-xl border border-border/50 bg-muted/40"
+                />
+              ))}
+            </div>
+          ) : recent.length === 0 ? (
+            <EmptyState
+              variant="panel"
+              icon={Icons.document}
+              title="No stories yet"
+              description="Write your first story from the + button."
+            />
+          ) : (
+            <>
+              <div className="mt-4 space-y-2.5">
+                {recent.map((story) => {
+                  const id = story.id || story._id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => navigate(`/stories/${id}/edit`)}
+                      className="flex w-full items-center gap-3 rounded-xl border border-border/50 bg-background px-3.5 py-3 text-left transition-colors hover:bg-muted/40"
+                    >
+                      {story.bannerImage?.url ? (
+                        <img
+                          src={story.bannerImage.url}
+                          alt=""
+                          className="h-11 w-16 flex-shrink-0 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-11 w-16 flex-shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <Icons.book className="h-4 w-4 text-muted-foreground/60" />
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <StoryTypeBadge type={story.storyType} />
+                          {story.status === "published" ? (
+                            <span className="text-[10px] font-semibold text-success">
+                              Published
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-semibold text-warning">
+                              Draft
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 truncate text-sm font-semibold text-foreground">
+                          {story.title || "Untitled"}
+                        </p>
+                      </div>
+
+                      <Icons.chevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => navigate("/my-stories")}
+                className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-primary"
+              >
+                View all my stories
+                <Icons.chevronRight className="h-4 w-4" />
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </motion.div>
   );
 }
+
+/**
+ * ?complete=1&redirect=<path> → profile editing lives on its own page,
+ * which also handles the "come back and publish" return trip. Sharing the
+ * helper keeps that deep-link working when a redirect lands here.
+ */
+function useMyRedirect(searchParams, navigate) {
+  const redirect = searchParams.get("redirect");
+
+  useEffect(() => {
+    if (!searchParams.get("complete")) return;
+
+    navigate(
+      `/profile/edit?complete=1${redirect ? `&redirect=${encodeURIComponent(redirect)}` : ""}`,
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+}
+
+// Stats and story tabs moved to My Stories (see pages/StoryDashboard).

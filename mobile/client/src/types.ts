@@ -26,17 +26,24 @@ export interface User {
   stats?: Record<string, number>;
 }
 
-/** One story entry inside a lifebook chapter. */
+/** A flat story document — one story per document, no nested chapters. */
 export interface StoryEntry {
   _id?: string;
   id?: string;
   title?: string;
+  slug?: string;
   content?: string;
   storyType?: string;
+  chapterName?: string;
   dateLabel?: string;
   location?: string;
   media?: MediaRef[];
+  bannerImage?: MediaRef;
+  status?: string;
+  visibility?: string;
   createdAt?: string;
+  updatedAt?: string;
+  publishedAt?: string;
 }
 
 export interface Chapter {
@@ -76,6 +83,12 @@ export interface Story {
   description?: string;
   bannerImage?: MediaRef;
   coverImage?: MediaRef;
+  storyType?: string;
+  chapterName?: string;
+  content?: string;
+  media?: MediaRef[];
+  status?: string;
+  visibility?: string;
   language?: string;
   authorProfession?: string;
   featured?: boolean;

@@ -25,14 +25,15 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
+    // Authors upgrade themselves now — only expert applications pend.
     Promise.all([
       adminApi.getDashboard(),
-      adminApi.getPendingAuthors(),
+      adminApi.getPendingExperts(),
       adminApi.getStories(),
     ])
-      .then(([s, a, st]) => {
+      .then(([s, e, st]) => {
         setStats(s.data.data);
-        setRecentPending((a.data.data || []).slice(0, 5));
+        setRecentPending((e.data.data || []).slice(0, 5));
         setRecentStories((st.data.data || []).slice(0, 5));
       })
       .catch(() => {})
@@ -47,7 +48,7 @@ export default function AdminDashboardPage() {
     );
   }
 
-  const needsAttention = (stats?.pendingAuthors || 0) + (stats?.pendingExperts || 0);
+  const needsAttention = stats?.pendingExperts || 0;
 
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
@@ -118,7 +119,7 @@ export default function AdminDashboardPage() {
             <CardHeader>
               <CardTitle className="font-display">Pending Applications</CardTitle>
               <Link
-                to="/dashboard/authors"
+                to="/dashboard/experts"
                 className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
               >
                 Review <Icons.chevronRight className="h-3 w-3" />
@@ -127,7 +128,7 @@ export default function AdminDashboardPage() {
             {recentPending.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <Icons.userCheck className="mb-3 h-10 w-10 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">No pending applications</p>
+                <p className="text-sm text-muted-foreground">No pending expert applications</p>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -142,7 +143,7 @@ export default function AdminDashboardPage() {
                         {author.email}{author.profession ? ` · ${author.profession}` : ''}
                       </p>
                     </div>
-                    <Badge variant="warning">Author</Badge>
+                    <Badge variant="warning">Expert</Badge>
                   </div>
                 ))}
               </div>

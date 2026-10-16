@@ -156,11 +156,7 @@ export default function ProfileEditPage() {
     try {
       await updateProfile(profilePayload(form));
 
-      toast.success(
-        author.isProfileCompleted
-          ? "Profile updated"
-          : "Profile completed — you can now publish stories",
-      );
+      toast.success(author.isAuthor ? "Profile updated" : "Profile updated");
 
       navigate(returnTo);
     } catch (err) {
@@ -204,7 +200,7 @@ export default function ProfileEditPage() {
             : "Keep your profile up to date — it appears on everything you publish."}
         </p>
 
-        {completeMode && !author.isProfileCompleted && (
+        {completeMode && !author.isAuthor && (
           <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3">
             <Icons.infoCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-warning" />
             <p className="text-xs text-foreground">

@@ -6,10 +6,28 @@ export const GENDER_OPTIONS = [
   { value: "Other", label: "Other" },
 ];
 
+/**
+ * The story kinds the story-style circular filter chips offer — mirrors the
+ * backend's STORY_TYPES enum (models/Story.js) so a selected chip can never
+ * send a value the API rejects.
+ */
+export const STORY_TYPE_OPTIONS = [
+  { value: "", label: "All" },
+  { value: "memory", label: "Memory" },
+  { value: "life_lesson", label: "Life Lesson" },
+  { value: "achievement", label: "Achievement" },
+  { value: "advice", label: "Advice" },
+  { value: "experience", label: "Experience" },
+  { value: "disease", label: "Disease" },
+  { value: "failure", label: "Failure" },
+  { value: "other", label: "Other" },
+];
+
 export const EMPTY_FILTERS = {
   authorName: "",
   profession: "",
   gender: "",
+  storyType: "",
 };
 
 /**
@@ -23,6 +41,7 @@ export function activeFilterCount(filters = {}) {
     filters.profession,
     filters.authorName,
     filters.gender,
+    filters.storyType,
   ].filter(Boolean).length;
 }
 
@@ -38,6 +57,7 @@ export function feedQuery(filters = {}) {
   if (filters.profession) params.profession = filters.profession;
   if (filters.authorName) params.authorName = filters.authorName;
   if (filters.gender) params.gender = filters.gender;
+  if (filters.storyType) params.storyType = filters.storyType;
 
   return params;
 }

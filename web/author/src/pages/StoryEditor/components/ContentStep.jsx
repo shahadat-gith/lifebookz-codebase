@@ -11,12 +11,14 @@ import {
   MdUndo,
   MdRedo,
 } from "react-icons/md";
-import { WizardShell, PrimaryButton } from "./WizardShell";
+import { WizardShell } from "./WizardShell";
 import { countWords, plainTextToHtml } from "../../../utils/richText";
+import { Icons } from "../../../icons";
 
 /**
- * Toolbar actions. Each one checks `editor.can()` so buttons disable
- * themselves when the action is not applicable (e.g. undo with no history).
+ * Step 2 — the story itself. Rich text with the same tight toolbar the
+ * reader will see: bold, italic, underline, lists. Content is optional in
+ * the schema but the continue button asks for at least a few words.
  */
 const TOOLBAR = [
   {
@@ -61,12 +63,11 @@ const TOOLBAR = [
   },
 ];
 
-export default function WriteStoryStep({
+export default function ContentStep({
   story,
   onChange,
   onContinue,
   onBack,
-  showWordCount = true,
 }) {
   // Kept in a ref so the editor never reads stale wizard state.
   const storyRef = useRef(story);
@@ -89,13 +90,11 @@ export default function WriteStoryStep({
       }),
     ],
     content: plainTextToHtml(story.content || ""),
-    // The toolbar reflects the current selection, so the editor must
-    // re-render on transactions.
     shouldRerenderOnTransaction: true,
     editorProps: {
       attributes: {
         class:
-          "rich-text min-h-[260px] max-h-[60vh] overflow-y-auto px-5 py-4 text-[15px] text-foreground focus:outline-none",
+          "rich-text min-h-[280px] max-h-[60vh] overflow-y-auto px-5 py-4 text-[15px] text-foreground focus:outline-none",
         "aria-label": "Story content",
       },
     },
@@ -107,11 +106,7 @@ export default function WriteStoryStep({
   const words = countWords(story.content);
 
   return (
-    <WizardShell step={4} totalSteps={9} title="Write Your Story" onBack={onBack}>
-      <p className="text-center text-sm text-muted-foreground mb-5">
-        Take your time. Write from your heart.
-      </p>
-
+    <WizardShell step={3} totalSteps={5} onBack={onBack}>
       <div className="rounded-2xl border border-border/70 bg-card shadow-xs overflow-hidden">
         {/* Toolbar */}
         <div className="flex items-center gap-0.5 border-b border-border/60 px-2 py-1.5">
@@ -166,24 +161,28 @@ export default function WriteStoryStep({
           </button>
         </div>
 
-        {/* Writing area */}
         <EditorContent editor={editor} />
 
-        {/* Footer */}
         <div className="flex items-center justify-between border-t border-border/60 px-4 py-2.5">
           <span className="text-xs text-muted-foreground">
-            {showWordCount ? `${words} ${words === 1 ? "word" : "words"}` : ""}
+            {words} {words === 1 ? "word" : "words"}
           </span>
-          <span className="hidden sm:block text-xs text-muted-foreground/70">
+          <span className="hidden text-xs text-muted-foreground/70 sm:block">
             Select text to bold, italicise or underline it
           </span>
         </div>
       </div>
 
       <div className="mt-6">
-        <PrimaryButton onClick={onContinue} disabled={words === 0}>
-          Save &amp; Continue
-        </PrimaryButton>
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={words === 0}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground px-5 py-3.5 font-display text-sm font-semibold shadow-sm hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Continue
+          <Icons.chevronRight className="h-4 w-4" />
+        </button>
       </div>
     </WizardShell>
   );

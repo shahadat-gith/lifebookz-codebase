@@ -15,11 +15,8 @@ router.get("/me", adminOnly, admin.getMe);
 
 router.get("/dashboard", adminOnly, admin.dashboard);
 
-router.get("/authors/pending", adminOnly, admin.getPendingAuthors);
-
-router.patch("/authors/:authorId/approve", adminOnly, admin.approveAuthor);
-
-router.patch("/authors/:authorId/reject", adminOnly, admin.rejectAuthor);
+// Authors no longer have an approval pipeline — the list below is all the
+// admin sees. (Expert applications still run through approve/reject.)
 
 router.get("/authors/approved", adminOnly, admin.getApprovedAuthors);
 

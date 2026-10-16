@@ -1,6 +1,6 @@
 import api from '../config/api';
 
-// Story (lifebook) API methods
+// Story API methods — one flat document per story.
 // All payloads are JSON — files upload straight to R2 via presigned URLs
 // (POST /uploads/presign) and only their { url, key } travel in the body.
 export async function create(data) {
@@ -28,42 +28,14 @@ export async function remove(storyId) {
   return res.data;
 }
 
-// Shows a chapter in the lifebook. A chapter is a slot in the life story
-// structure, so the only thing a caller can say about it is where it goes.
-export async function addChapter(storyId, order) {
-  const res = await api.post(`/stories/${storyId}/chapters`, { order });
-  return res.data.data;
-}
-
-export async function updateChapter(storyId, chapterId, data) {
-  const res = await api.patch(`/stories/${storyId}/chapters/${chapterId}`, data);
-  return res.data.data;
-}
-
-export async function deleteChapter(storyId, chapterId) {
-  const res = await api.delete(`/stories/${storyId}/chapters/${chapterId}`);
-  return res.data.data;
-}
-
-// Stories inside chapters — the text, media and visibility of a lifebook
-export async function updateChapterStory(storyId, chapterId, storyEntryId, data) {
-  const res = await api.patch(
-    `/stories/${storyId}/chapters/${chapterId}/stories/${storyEntryId}`,
-    data,
-  );
-  return res.data.data;
-}
-
-export async function deleteChapterStory(storyId, chapterId, storyEntryId) {
-  const res = await api.delete(
-    `/stories/${storyId}/chapters/${chapterId}/stories/${storyEntryId}`,
-  );
-  return res.data.data;
-}
-
 // Author-specific API
 export async function getMyStories() {
   const res = await api.get('/authors/me/stories');
+  return res.data.data;
+}
+
+export async function getMyStorySummaries() {
+  const res = await api.get('/authors/me/stories/summaries');
   return res.data.data;
 }
 
@@ -77,7 +49,7 @@ export async function getMyStory(storyId) {
   return res.data.data;
 }
 
-// Media upload was moved to presigned direct-to-R2 uploads — see
+// Media upload moved to presigned direct-to-R2 uploads — see
 // components/story/AddMediaStep.jsx (photos & videos only, no server pass-through).
 
 export default api;

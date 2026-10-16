@@ -9,12 +9,24 @@ import { authorName, isVerifiedAuthor, mediaUrl, storyId, storyImage } from "../
 import { Avatar } from "./ui";
 import type { Story } from "../types";
 
+const TYPE_LABELS: Record<string, string> = {
+  memory: "Memory",
+  life_lesson: "Career",
+  achievement: "Achievement",
+  advice: "Advice",
+  experience: "Experience",
+  disease: "Health",
+  failure: "Failure",
+  other: "Other",
+};
+
 export function StoryCard({ story }: { story: Story }) {
   const scheme = useColorScheme();
   const theme = useTheme(scheme === "dark");
   const router = useRouter();
   const slug = story.slug || storyId(story);
   const cover = storyImage(story);
+  const typeLabel = story.storyType ? TYPE_LABELS[story.storyType] || story.storyType : null;
 
   return (
     <Pressable
@@ -37,16 +49,22 @@ export function StoryCard({ story }: { story: Story }) {
           <Ionicons name="book" size={30} color={theme.primary} />
         </View>
       )}
-      <View style={styles.body}>
-        <View style={styles.tagRow}>
-          {story.featured ? (
-            <View style={[styles.tag, { backgroundColor: `${theme.accent}22` }]}>
-              <Text style={[styles.tagText, { color: theme.accent }]}>★ Featured</Text>
-            </View>
-          ) : null}
-    
-        </View>
 
+      {/* Chips laid over the cover, magazine style */}
+      <View style={styles.chipRow} pointerEvents="none">
+        {typeLabel ? (
+          <View style={[styles.chip, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.chipText, { color: theme.text }]}>{typeLabel.toUpperCase()}</Text>
+          </View>
+        ) : null}
+        {story.chapterName ? (
+          <View style={[styles.chip, { backgroundColor: `${theme.primary}e6` }]}>
+            <Text style={styles.chipTextLight}>{story.chapterName.toUpperCase()}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.body}>
         <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>
           {story.title || "Untitled Story"}
         </Text>
@@ -96,6 +114,7 @@ export function StoryRailCard({ story, width = 220 }: { story: Story; width?: nu
   const router = useRouter();
   const slug = story.slug || storyId(story);
   const cover = storyImage(story);
+  const typeLabel = story.storyType ? TYPE_LABELS[story.storyType] || story.storyType : "";
 
   return (
     <Pressable
@@ -119,6 +138,9 @@ export function StoryRailCard({ story, width = 220 }: { story: Story; width?: nu
         </View>
       )}
       <View style={styles.railBody}>
+        {typeLabel ? (
+          <Text style={[styles.railType, { color: theme.accent }]}>{typeLabel.toUpperCase()}</Text>
+        ) : null}
         <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>
           {story.title || "Untitled Story"}
         </Text>
@@ -148,15 +170,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  body: { padding: Spacing.lg },
-  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.xs, marginBottom: Spacing.sm },
-  tag: {
-    paddingHorizontal: Spacing.sm + 2,
+  chipRow: {
+    position: "absolute",
+    top: Spacing.sm + 2,
+    left: Spacing.sm + 2,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.xs,
+  },
+  chip: {
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 3,
     borderRadius: Radius.pill,
-    maxWidth: 160,
   },
-  tagText: { fontSize: 11, fontWeight: "700" },
+  chipText: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
+  chipTextLight: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    color: "#fff",
+  },
+  body: { padding: Spacing.lg },
   title: { fontSize: 17, fontWeight: "700", lineHeight: 22 },
   metaRow: {
     flexDirection: "row",
@@ -184,4 +222,10 @@ const styles = StyleSheet.create({
   railCover: { width: "100%", height: 110 },
   railCoverCenter: { alignItems: "center", justifyContent: "center" },
   railBody: { padding: Spacing.md },
+  railType: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    marginBottom: Spacing.xs,
+  },
 });

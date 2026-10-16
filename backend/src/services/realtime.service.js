@@ -1,4 +1,5 @@
-import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import {
   DeleteCommand,
   DynamoDBDocumentClient,

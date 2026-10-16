@@ -66,6 +66,13 @@ export default function StoryMedia({ media = [] }) {
         )}
       </div>
 
+      {/* The current item's caption, beneath the carousel. */}
+      {media[index]?.caption && (
+        <p className="mt-2 text-center text-xs italic text-muted-foreground">
+          {media[index].caption}
+        </p>
+      )}
+
       {count > 1 && (
         <div className="mt-2.5 flex items-center justify-center gap-1.5">
           {media.map((_, i) => (

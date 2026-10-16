@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import Avatar from "../../../components/ui/Avatar";
 import { Icons } from "../../../icons";
 import { isVerifiedAuthor } from "../../../utils/authors";
-import { chapterLabel, sortChapters } from "../../../utils/chapters";
+import { storyType as storyTypeMeta } from "../../../utils/storyTypes";
 import { apiErrorMessage } from "../../../utils/helpers";
 import { lifebookCover } from "../../../utils/media";
 
@@ -71,7 +71,6 @@ export default function StoriesForYou({ stories, loading = false, error = null, 
         <div className="flex gap-4 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 pb-2 snap-x">
           {stories.map((s, i) => {
             const a = s.author || {};
-            const firstChapter = sortChapters(s.chapters)[0];
             const cover = lifebookCover(s);
 
             return (
@@ -107,7 +106,7 @@ export default function StoriesForYou({ stories, loading = false, error = null, 
                         )}
                       </p>
                       <p className="text-[11px] text-muted-foreground truncate">
-                        {firstChapter ? chapterLabel(firstChapter) : "Life"}
+                        {storyTypeMeta(s.storyType).label}
                       </p>
                     </div>
                   </div>

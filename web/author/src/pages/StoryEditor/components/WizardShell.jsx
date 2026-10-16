@@ -2,20 +2,14 @@ import { motion } from "framer-motion";
 import { Icons } from "../../../icons";
 
 /**
- * Professional wizard chrome:
- *  - Header: back chevron · centered step label + title
- *  - Animated progress bar with segment ticks
- *  - Content inside a floating rounded card
- *  - Optional footer slot so action buttons sit on a consistent baseline
+ * Wizard chrome, reduced to the step number: a back chevron, "Step X of N",
+ * and the animated progress bar. The steps speak for themselves — no titles.
  */
 export function WizardShell({
   step,
   totalSteps,
-  title,
-  subtitle,
   onBack,
   children,
-  footer,
   maxWidth = "max-w-xl",
 }) {
   const pct = Math.round((step / totalSteps) * 100);
@@ -28,37 +22,33 @@ export function WizardShell({
         transition={{ duration: 0.3 }}
         className={`mx-auto w-full ${maxWidth}`}
       >
-        {/* ── Header row ── */}
-        <div className="flex items-center gap-3 mb-5">
+        {/* ── Header row: back · step number · spacer ── */}
+        <div className="mb-5 flex items-center gap-3">
           {onBack ? (
             <button
               type="button"
               onClick={onBack}
               aria-label="Go back"
-              className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full border border-border/70 bg-card text-foreground shadow-xs hover:bg-muted transition-colors"
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-border/70 bg-card text-foreground shadow-xs transition-colors hover:bg-muted"
             >
               <Icons.chevronLeft className="h-5 w-5" />
             </button>
           ) : (
-            <span className="flex-shrink-0 w-10" />
+            <span className="h-10 w-10 flex-shrink-0" />
           )}
 
-          <div className="flex-1 min-w-0 text-center">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-accent">
-              Step {step} of {totalSteps}
+          <div className="min-w-0 flex-1 text-center">
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-accent">
+              Step {step} / {totalSteps}
             </p>
-            <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground leading-tight truncate">
-              {title}
-            </h1>
           </div>
 
-          {/* Symmetric spacer keeps the title centered */}
-          <span className="flex-shrink-0 w-10" />
+          <span className="h-10 w-10 flex-shrink-0" />
         </div>
 
         {/* ── Progress bar ── */}
         <div className="mb-6">
-          <div className="relative h-1.5 rounded-full bg-muted overflow-hidden">
+          <div className="relative h-1.5 overflow-hidden rounded-full bg-muted">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${pct}%` }}
@@ -69,16 +59,8 @@ export function WizardShell({
         </div>
 
         {/* ── Card body ── */}
-        <div className="rounded-3xl border border-border/60 bg-card shadow-md p-5 sm:p-8">
-          {subtitle && (
-            <p className="text-center text-sm text-muted-foreground mb-6">
-              {subtitle}
-            </p>
-          )}
-
+        <div className="rounded-3xl border border-border/60 bg-card p-5 shadow-md sm:p-8">
           {children}
-
-          {footer && <div className="mt-8">{footer}</div>}
         </div>
       </motion.div>
     </div>
@@ -102,19 +84,6 @@ export function PrimaryButton({
       onClick={onClick}
       disabled={disabled || loading}
       className={`w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground px-5 py-3.5 font-display text-sm font-semibold shadow-sm hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** Underlined tertiary link button (e.g. "Skip for Now"). */
-export function LinkButton({ children, onClick, className = "" }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`text-sm font-semibold text-primary underline underline-offset-4 hover:text-accent transition-colors ${className}`}
     >
       {children}
     </button>

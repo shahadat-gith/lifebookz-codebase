@@ -13,7 +13,7 @@ import {
   validationError,
 } from "../utils/errors.js";
 
-import { sendApplicationApproved, sendApplicationRejected } from "../utils/admin.utils.js";
+import { sendApplicationApproved, sendApplicationRejected } from "../utils/admin.utils.js"; // expert applications only
 
 export function loginAdmin({ email, password }) {
   if (!config.admin.email || !config.admin.password || !config.admin.key) {
@@ -50,11 +50,10 @@ export function getAdminIdentity() {
 export async function getDashboardStats() {
   const [readers, authors, stories, experts, pendingAuthors, pendingExperts] =
     await Promise.all([
-      User.countDocuments({ role: "user" }),
+      User.countDocuments({ roles: ["user"], isAuthor: false, isExpert: false }),
       User.countDocuments({ roles: "author" }),
       Story.countDocuments({ status: "published" }),
       User.countDocuments({ roles: "expert" }),
-      User.countDocuments({ roles: "author", "author.verification.status": "pending" }),
       User.countDocuments({ roles: "expert", "expert.verification.status": "pending" }),
     ]);
 
@@ -63,77 +62,19 @@ export async function getDashboardStats() {
     totalAuthors: authors,
     totalStories: stories,
     totalExperts: experts,
-    pendingAuthors,
     pendingExperts,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Author applications
+// Authors — list only. There is no author approval pipeline: accounts
+// become publishing authors by completing their profile in the author
+// portal, so the admin screens only ever read them.
 // ---------------------------------------------------------------------------
-
-export async function listPendingAuthors() {
-  const authors = await User.find({
-    roles: "author",
-    "author.verification.status": "pending",
-  })
-    .sort({ createdAt: 1 })
-    .lean();
-
-  return authors.map(flattenUser);
-}
-
-export async function approveAuthor({ authorId }) {
-  const author = await User.findOne({ _id: authorId, roles: "author" });
-
-  if (!author) {
-    throw notFoundError("Author not found.");
-  }
-
-  const authorProfile = author.author || (author.author = {});
-
-  authorProfile.verification = authorProfile.verification || {};
-  authorProfile.verification.status = "approved";
-  author.author.verification.verifiedAt = new Date();
-  author.author.verification.rejectionReason = "";
-
-  await author.save();
-
-  // Fire-and-forget: the response should not wait on SES.
-  sendApplicationApproved(author.email, author.fullName, "author");
-
-  return author;
-}
-
-export async function rejectAuthor({ authorId, reason }) {
-  if (!reason?.trim()) {
-    throw validationError("Rejection reason is required.");
-  }
-
-  const author = await User.findOne({ _id: authorId, roles: "author" });
-
-  if (!author) {
-    throw notFoundError("Author not found.");
-  }
-
-  const authorProfile = author.author || (author.author = {});
-
-  authorProfile.verification = authorProfile.verification || {};
-  authorProfile.verification.status = "rejected";
-  author.author.verification.verifiedAt = new Date();
-  author.author.verification.rejectionReason = reason.trim();
-
-  await author.save();
-
-  sendApplicationRejected(author.email, author.fullName, reason.trim(), "author");
-
-  return author;
-}
 
 export async function listApprovedAuthors() {
   const authors = await User.find({
     roles: "author",
-    "author.verification.status": "approved",
   })
     .sort({ createdAt: -1 })
     .lean();
@@ -163,7 +104,15 @@ export async function listApprovedAuthors() {
 // ---------------------------------------------------------------------------
 
 export async function listUsers() {
-  const users = await User.find({ role: "user" }).sort({ createdAt: -1 }).lean();
+  const users = await User.find({
+    roles: ["user"], // plain readers — no author/expert capability
+    $nor: [
+      { roles: "author" },
+      { roles: "expert" },
+    ],
+  })
+    .sort({ createdAt: -1 })
+    .lean();
 
   users.forEach((user) => {
     delete user.auth;

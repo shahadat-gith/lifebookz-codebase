@@ -2,7 +2,7 @@
  * "Share your experience" — one testimonial per person, editable until
  * deleted (mirrors the web client). Sign-in prompt when unauthenticated.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -60,24 +60,6 @@ export function ShareTestimonial() {
   const [rating, setRating] = useState(5);
   const [submitting, setSubmitting] = useState(false);
   const [mine, setMine] = useState<{ _id?: string; id?: string } | null>(null);
-  const [loadedMine, setLoadedMine] = useState(false);
-
-  // Load the signed-in user's existing testimonial (if any) once.
-  useEffect(() => {
-    if (!isAuthenticated || loadedMine) return;
-    api
-      .get("/testimonials/me")
-      .then((res) => {
-        const data = res.data?.data;
-        if (data) {
-          setMine(data);
-          setMessage(data.message || "");
-          setRating(data.rating || 5);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoadedMine(true));
-  }, [isAuthenticated, loadedMine]);
 
   async function handleSubmit() {
     if (!message.trim()) {

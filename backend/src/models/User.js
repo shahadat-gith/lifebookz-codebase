@@ -95,9 +95,6 @@ const statsSchema = new mongoose.Schema(
 
 const authorSchema = new mongoose.Schema(
   {
-    // Publishing gate: complete profile before a story can be published.
-    isProfileCompleted: { type: Boolean },
-
     phone: { type: String, trim: true },
 
     dob: { type: Date },
@@ -114,9 +111,6 @@ const authorSchema = new mongoose.Schema(
 
     // Like totals a story author accumulates.
     stats: { type: statsSchema },
-
-    // Author application state (admins approve or reject).
-    verification: { type: verificationSchema, default: () => ({}) },
   },
   { _id: false },
 );
@@ -177,25 +171,25 @@ const expertSchema = new mongoose.Schema(
  */
 const userSchema = new mongoose.Schema(
   {
-    /** Primary role — the most recent capability granted to the account.
-     *  Kept in sync with `roles` below (always a member of it). */
-    role: {
-      type: String,
-      enum: ["user", "author", "expert"],
-      default: "user",
-      index: true,
-    },
-
     /**
      * Every role the account holds — upgrades ADD to this list and never
      * replace it, so one account can be a reader, an author and an expert
-     * at once. `role` above mirrors the newest entry for tokens/UI.
+     * at once. The only role field there is.
      */
     roles: {
       type: [String],
       enum: ["user", "author", "expert"],
       default: ["user"],
     },
+
+    /**
+     * Fast upgrade flags the clients read directly (no extra API round
+     * trip to know what an account can do). Kept in lockstep with `roles`:
+     * upgrading to author sets isAuthor, to expert sets isExpert.
+     */
+    isAuthor: { type: Boolean, default: false, index: true },
+
+    isExpert: { type: Boolean, default: false, index: true },
 
     fullName: {
       type: String,
@@ -282,7 +276,6 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ status: 1 });
-userSchema.index({ roles: 1, "author.verification.status": 1 });
 userSchema.index({ roles: 1, "expert.verification.status": 1 });
 // NOTE: `roles` is an array, and MongoDB rejects indexes over two parallel
 // arrays in one document — so the expert matching index keeps its scalar
@@ -292,25 +285,27 @@ userSchema.index({ fullName: "text" });
 
 /**
  * Invariant: `roles` always lists every held role ("user" included) and
- * `role` — the primary — is one of them. Accounts created before the
- * `roles` field existed get it derived from their stored `role`.
+ * the isAuthor/isExpert flags mirror the array, so the two can never
+ * disagree. Accounts created before `roles` existed (single `role` docs)
+ * are migrated into the array here on first touch.
  */
 userSchema.pre("validate", function (next) {
+  // Legacy docs carrying only the old scalar `role`.
+  if (Array.isArray(this.roles) && this.roles.length === 0 && this.role) {
+    this.roles = [this.role];
+  }
+
   if (!Array.isArray(this.roles) || this.roles.length === 0) {
-    this.roles = this.role ? [this.role] : ["user"];
+    this.roles = ["user"];
   }
 
   if (!this.roles.includes("user")) {
     this.roles.unshift("user");
   }
 
-  if (this.role && !this.roles.includes(this.role)) {
-    this.roles.push(this.role);
-  }
-
-  if (!this.role || !this.roles.includes(this.role)) {
-    this.role = this.role || this.roles[this.roles.length - 1];
-  }
+  // Flags follow the array — the single source of truth.
+  this.isAuthor = this.roles.includes("author");
+  this.isExpert = this.roles.includes("expert");
 
   return next();
 });

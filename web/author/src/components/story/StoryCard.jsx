@@ -28,15 +28,9 @@ export default function StoryCard({ story, showActions = true }) {
   const authorUrl = authorId ? `/authors/${authorId}` : url;
 
   const profession = story.authorProfession || author.profession || "";
-  const authorMeta = [profession, getTimeAgo(story.publishedAt || story.createdAt)]
+  const authorMeta = [profession, story.storyType?.replace(/_/g, " "), getTimeAgo(story.publishedAt || story.createdAt)]
     .filter(Boolean)
     .join(" · ");
-
-  const chapterCount = story.chapters?.length || 0;
-  const storyCount = (story.chapters || []).reduce(
-    (sum, chapter) => sum + (chapter.stories?.length || 0),
-    0,
-  );
 
   const likesCaption = formatLikesCaption(recentLikers, likeCount);
 
@@ -108,13 +102,12 @@ export default function StoryCard({ story, showActions = true }) {
         </h2>
       </Link>
 
-      {/* Size */}
-      {chapterCount > 1 && (
+      {/* Type badge */}
+      {story.storyType && (
         <div className="px-5 pb-2">
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <Icons.book className="h-3 w-3" />
-            {chapterCount} chapters
-            {storyCount > 0 && ` · ${storyCount} stories`}
+          <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-accent">
+            <Icons.tag className="h-3 w-3" />
+            {story.storyType.replace(/_/g, " ")}
           </span>
         </div>
       )}

@@ -14,7 +14,8 @@ const PAGE_SIZE = 10;
  * committed filters and the draft the modal edits.
  *
  * Filters are edited as a draft and committed in one go, so narrowing the
- * feed costs one request no matter how many controls were touched.
+ * feed costs one request no matter how many controls were touched. The
+ * circular storyType chips commit immediately — one chip, one request.
  */
 export default function useFeed() {
   const [stories, setStories] = useState([]);
@@ -80,6 +81,7 @@ export default function useFeed() {
     filters.profession,
     filters.authorName,
     filters.gender,
+    filters.storyType,
   ]);
 
   // Infinite scroll: load the next page as the sentinel comes into view.
@@ -118,6 +120,11 @@ export default function useFeed() {
     setFilterOpen(false);
   }
 
+  /** The circular chips commit immediately. */
+  function setTypeFilter(value) {
+    setFilters((prev) => ({ ...prev, storyType: value }));
+  }
+
   const appliedCount = activeFilterCount(filters);
 
   return {
@@ -137,5 +144,6 @@ export default function useFeed() {
     applyFilters,
     clearFilters,
     closeFilters: () => setFilterOpen(false),
+    setTypeFilter,
   };
 }

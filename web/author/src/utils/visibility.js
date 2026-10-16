@@ -3,10 +3,11 @@ import { Icons } from "../icons";
 /**
  * Who can read a story.
  *
- * A story's audience is its own setting, so the same two levels are offered
- * wherever a story is written, listed or read. Keeping the wording in one
- * place stops the wizard and the profile describing the same level
- * differently.
+ * A story's audience is its own setting, so the same three levels are
+ * offered wherever a story is written, listed or read. Keeping the wording
+ * in one place stops the wizard and the profile describing the same level
+ * differently. The author portal only offers public/private — "followers"
+ * is a client-portal level the model supports but writing is author-only.
  */
 export const VISIBILITY_OPTIONS = [
   {

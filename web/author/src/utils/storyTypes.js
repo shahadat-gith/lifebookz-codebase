@@ -1,23 +1,31 @@
 import { Icons } from "../icons";
 
 /**
- * The kinds of story an author can write.
- *
- * One list, because three screens read it: the writing wizard offers every
- * type, the badges colour-code it, and the dashboard labels it. They must
- * never disagree about what a "memory" is called or what colour it wears.
+ * The kinds of story an author can write — one list, matching the backend's
+ * STORY_TYPES enum exactly (models/Story.js). Three screens read it: the
+ * writing wizard offers every type, the badges colour-code it, and the
+ * dashboard labels it. They must never disagree about what a "memory" is
+ * called or what colour it wears.
  *
  * - `color` tints the type tile in the wizard
  * - `tint`  is the pastel badge used in lists and readers
  */
-export const STORY_TYPES = [
+export const STORY_TYPE_OPTIONS = [
   {
-    value: "experience",
-    label: "Experience",
-    hint: "Something I lived through",
-    color: "text-info",
-    tint: "bg-blue-500/10 text-info",
-    icon: Icons.globe,
+    value: "memory",
+    label: "Memory",
+    hint: "A moment I want to remember",
+    color: "text-success",
+    tint: "bg-rose-500/10 text-rose-600",
+    icon: Icons.heartRegular,
+  },
+  {
+    value: "life_lesson",
+    label: "Life Lesson",
+    hint: "Something I learned",
+    color: "text-accent",
+    tint: "bg-emerald-500/10 text-success",
+    icon: Icons.book,
   },
   {
     value: "achievement",
@@ -28,44 +36,36 @@ export const STORY_TYPES = [
     icon: Icons.starSolid,
   },
   {
-    value: "challenge",
-    label: "Challenge",
-    hint: "Something I overcame",
-    color: "text-destructive",
-    tint: "bg-violet-500/10 text-violet-600",
-    icon: Icons.shieldCheck,
+    value: "advice",
+    label: "Advice",
+    hint: "Guidance I'd give my younger self",
+    color: "text-info",
+    tint: "bg-sky-500/10 text-info",
+    icon: Icons.sparkles,
   },
   {
-    value: "diseases",
-    label: "Diseases",
-    hint: "Diseases I overcame",
+    value: "experience",
+    label: "Experience",
+    hint: "Something I lived through",
+    color: "text-info",
+    tint: "bg-blue-500/10 text-info",
+    icon: Icons.globe,
+  },
+  {
+    value: "disease",
+    label: "Disease",
+    hint: "An illness I faced",
     color: "text-cyan-600",
     tint: "bg-cyan-500/10 text-cyan-600",
     icon: Icons.heartbeat,
   },
   {
-    value: "failures",
-    label: "Failures",
+    value: "failure",
+    label: "Failure",
     hint: "Something I failed at",
     color: "text-orange-600",
     tint: "bg-orange-500/10 text-orange-600",
     icon: Icons.exclamationTriangle,
-  },
-  {
-    value: "memory",
-    label: "Memory",
-    hint: "A moment I want to remember",
-    color: "text-success",
-    tint: "bg-rose-500/10 text-rose-600",
-    icon: Icons.heartRegular,
-  },
-  {
-    value: "lesson",
-    label: "Lesson",
-    hint: "Something I learned",
-    color: "text-accent",
-    tint: "bg-emerald-500/10 text-success",
-    icon: Icons.book,
   },
   {
     value: "other",
@@ -77,9 +77,11 @@ export const STORY_TYPES = [
   },
 ];
 
-export const STORY_TYPE_OTHER = STORY_TYPES[STORY_TYPES.length - 1];
+export const STORY_TYPES = STORY_TYPE_OPTIONS;
+
+export const STORY_TYPE_OTHER = STORY_TYPE_OPTIONS[STORY_TYPE_OPTIONS.length - 1];
 
 /** The type for a stored value, falling back to "Other". */
 export function storyType(value) {
-  return STORY_TYPES.find((t) => t.value === value) || STORY_TYPE_OTHER;
+  return STORY_TYPE_OPTIONS.find((t) => t.value === value) || STORY_TYPE_OTHER;
 }

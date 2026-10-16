@@ -4,7 +4,7 @@ import { parseImageRef } from "../utils/media.js";
 
 export async function upgrade(req, res, next) {
   try {
-    const { expert, previousRole, token } = await expertService.upgradeToExpert({
+    const { expert, token } = await expertService.upgradeToExpert({
       userId: req.user?.id,
       body: req.body,
       avatar: parseImageRef(req.body.avatar, "avatar"),
@@ -12,7 +12,7 @@ export async function upgrade(req, res, next) {
 
     return res.status(200).json({
       success: true,
-      message: `Upgraded from ${previousRole} to expert. Your application is pending verification.`,
+      message: "Expert application submitted. It stays pending until an admin approves it.",
       data: { expert, token },
     });
   } catch (error) {

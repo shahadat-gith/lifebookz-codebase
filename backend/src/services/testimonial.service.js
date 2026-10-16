@@ -69,18 +69,6 @@ export async function createTestimonial({ role, userId, message, rating }) {
 }
 
 /**
- * The signed-in person's own testimonial (or null).
- */
-export async function getMyTestimonial({ userId }) {
-  if (!userId) return null;
-  return withId(
-    (await Testimonial.findOne({ person: userId })
-      .populate("person", PERSON_SELECT)
-      .lean()) || null,
-  );
-}
-
-/**
  * Admins and the testimonial owner can remove a testimonial.
  */
 export async function deleteTestimonial({ id, userId, isAdmin }) {

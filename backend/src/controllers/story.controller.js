@@ -5,7 +5,7 @@ const viewerOf = (req) =>
 
 /**
  * POST /stories
- * Create lifebook draft.
+ * Create a story draft.
  */
 export async function create(req, res, next) {
   try {
@@ -22,7 +22,7 @@ export async function create(req, res, next) {
 
 /**
  * PATCH /stories/:storyId
- * Update lifebook (allowed in any state — full author control).
+ * Update a story (allowed in any state — full author control).
  */
 export async function update(req, res, next) {
   try {
@@ -40,7 +40,7 @@ export async function update(req, res, next) {
 
 /**
  * DELETE /stories/:storyId
- * Delete lifebook (allowed in any state — full author control).
+ * Delete a story (allowed in any state — full author control).
  */
 export async function remove(req, res, next) {
   try {
@@ -73,8 +73,25 @@ export async function getDrafts(req, res, next) {
 }
 
 /**
+ * GET /stories/mine — everything the author owns (drafts included).
+ */
+export async function getMine(req, res, next) {
+  try {
+    const data = await storyService.listMyStories({
+      authorId: req.user.id,
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * GET /stories/:storyId
- * Single lifebook by id or slug.
+ * Single story by id or slug.
  */
 export async function getStory(req, res, next) {
   try {
@@ -91,7 +108,8 @@ export async function getStory(req, res, next) {
 
 /**
  * GET /stories
- * Published feed.
+ * Published feed — one story per row. Filters: storyType, chapter,
+ * profession, authorName, gender. Paged via page/limit.
  */
 export async function list(req, res, next) {
   try {
@@ -121,90 +139,42 @@ export async function getProfessions(req, res, next) {
   }
 }
 
-export async function addChapter(req, res, next) {
+/**
+ * GET /stories/types
+ * The storyType options the circular feed filters and the author select
+ * render — served by the backend so clients never hard-code the list.
+ */
+export async function getTypes(_req, res, next) {
   try {
-    const story = await storyService.addChapter({
-      authorId: req.user.id,
-      storyId: req.params.storyId,
-      body: req.body,
-    });
+    const data = await storyService.STORY_TYPES;
 
-    res.status(201).json({ success: true, data: story });
+    res.json({ success: true, data });
   } catch (error) {
     next(error);
   }
 }
 
-export async function updateChapter(req, res, next) {
+/**
+ * GET /stories/latest — top of the feed (used by web + mobile home rails).
+ */
+export async function getLatest(req, res, next) {
   try {
-    const story = await storyService.updateChapter({
-      authorId: req.user.id,
-      storyId: req.params.storyId,
-      chapterId: req.params.chapterId,
-      body: req.body,
-    });
+    const data = await storyService.latestStories({ viewer: viewerOf(req) });
 
-    res.json({ success: true, data: story });
+    res.json({ success: true, data });
   } catch (error) {
     next(error);
   }
 }
 
-export async function deleteChapter(req, res, next) {
+/**
+ * GET /stories/trending — most-liked published stories.
+ */
+export async function getTrending(req, res, next) {
   try {
-    const story = await storyService.deleteChapter({
-      authorId: req.user.id,
-      storyId: req.params.storyId,
-      chapterId: req.params.chapterId,
-    });
+    const data = await storyService.trendingStories({ viewer: viewerOf(req) });
 
-    res.json({ success: true, data: story });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function addChapterStory(req, res, next) {
-  try {
-    const story = await storyService.addChapterStory({
-      authorId: req.user.id,
-      storyId: req.params.storyId,
-      chapterId: req.params.chapterId,
-      body: req.body,
-    });
-
-    res.status(201).json({ success: true, data: story });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function updateChapterStory(req, res, next) {
-  try {
-    const story = await storyService.updateChapterStory({
-      authorId: req.user.id,
-      storyId: req.params.storyId,
-      chapterId: req.params.chapterId,
-      storyEntryId: req.params.storyEntryId,
-      body: req.body,
-    });
-
-    res.json({ success: true, data: story });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function deleteChapterStory(req, res, next) {
-  try {
-    const story = await storyService.deleteChapterStory({
-      authorId: req.user.id,
-      storyId: req.params.storyId,
-      chapterId: req.params.chapterId,
-      storyEntryId: req.params.storyEntryId,
-    });
-
-    res.json({ success: true, data: story });
+    res.json({ success: true, data });
   } catch (error) {
     next(error);
   }
@@ -270,18 +240,6 @@ export async function toggleLike(req, res, next) {
     });
 
     res.json({ success: true, data });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function getLikes(req, res, next) {
-  try {
-    const likes = await storyService.listLikes({
-      storyId: req.params.storyId,
-    });
-
-    res.json({ success: true, data: likes });
   } catch (error) {
     next(error);
   }

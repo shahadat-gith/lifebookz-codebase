@@ -1,46 +1,36 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 
 import { useAuth } from "../../context/AuthContext";
 import * as storyApi from "../../utils/storyApi";
 import LoadingScreen from "../../components/common/LoadingScreen";
-import { findChapter, nextChapterOrder, sortChapters, suggestedTitle } from "../../utils/chapters";
 import { Icons } from "../../icons";
 
-import { WizardShell, PrimaryButton } from "./components/WizardShell";
-import SelectChapterStep from "./components/SelectChapterStep";
-import ChooseStoryTypeStep from "./components/ChooseStoryTypeStep";
-import StoryDetailsStep from "./components/StoryDetailsStep";
-import WriteStoryStep from "./components/WriteStoryStep";
-import AddMediaStep from "./components/AddMediaStep";
+import MetadataStep from "./components/MetadataStep";
+import TitleStep from "./components/TitleStep";
+import ContentStep from "./components/ContentStep";
+import MediaStep from "./components/MediaStep";
 import VisibilityStep from "./components/VisibilityStep";
-import PreviewStoryStep from "./components/PreviewStoryStep";
 import PublishedStep from "./components/PublishedStep";
-import {
-  emptyChapter,
-  emptyStory,
-  findExistingLifebook,
-  latestDraft,
-  toLocalChapters,
-  toStoryEntry,
-} from "./utils";
-
-const TOTAL_STEPS = 9;
+import UpgradeModal from "./components/UpgradeModal";
+import { emptyStory, toStoryEntry } from "./utils";
 
 /**
- * The story writing flow.
+ * The story writing flow — five steps:
  *
- * Nine steps take an author from picking a chapter to a published story, and
- * the wizard autosaves as a draft so a closed tab never loses work. The
- * wizard only drives the flow — the shape conversions live in `utils.js` and
+ *   1. Classification — chapter and story type (both selects)
+ *   2. Title & banner — the name and the mandatory cover
+ *   3. Content        — the story itself, rich text
+ *   4. Media          — optional photos / videos
+ *   5. Visibility     — audience choice with the final Publish button
+ *
+ * The wizard autosaves as a draft so a closed tab never loses work, and
  * every screen is one of its own components.
  */
 export default function StoryEditorPage() {
   const { storyId } = useParams();
   const [searchParams] = useSearchParams();
-  // ?story=<id> → jump straight into editing that specific story entry
-  const editStoryEntryId = searchParams.get("story");
   // ?publish=1 → returned from completing the profile; resume publishing
   const wantsPublish = searchParams.get("publish") === "1";
 
@@ -48,313 +38,168 @@ export default function StoryEditorPage() {
   const navigate = useNavigate();
   const isEditMode = Boolean(storyId);
 
+  // The author as of this session — the upgrade modal hands back a
+  // refreshed account carrying isProfileCompleted, so publishing continues
+  // without waiting for the provider to refetch.
+  const [refreshedAuthor, setRefreshedAuthor] = useState(null);
+  const activeAuthor = refreshedAuthor || author;
+
   const [phase, setPhase] = useState(1);
-
-  // Lifebook-level state
-  const [lifebookId, setLifebookId] = useState(storyId || null);
-  const [lifebookTitle, setLifebookTitle] = useState("");
-  const [lifebookVisibility, setLifebookVisibility] = useState("public");
+  const [storyDocId, setStoryDocId] = useState(storyId || null);
   const [bannerImage, setBannerImage] = useState(null);
-  const [chapters, setChapters] = useState([]);
-  const [loaded, setLoaded] = useState(!isEditMode);
-  // Whether we've already tried adopting the author's existing lifebook when
-  // starting /stories/new (so every story lands in ONE lifebook).
-  const [adoptTried, setAdoptTried] = useState(isEditMode);
-
-  // Wizard state — the chapter being written, identified by its slot in the
-  // life story structure, plus the story being written.
-  const [activeOrder, setActiveOrder] = useState(0);
   const [draft, setDraft] = useState(emptyStory());
+  const [loaded, setLoaded] = useState(!isEditMode);
+  const [publishing, setPublishing] = useState(false);
   const [savedSlug, setSavedSlug] = useState("");
-  const [error, setError] = useState("");
+  // Shown when a not-yet-upgraded account presses Publish: the upgrade
+  // form grants the author role, then publishing resumes automatically.
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   /* ---------- Loading ---------- */
 
-  // Edit mode: open the author's lifebook, and honour the deep links.
   useEffect(() => {
     if (!storyId || !author) return;
 
     storyApi
       .getMyStory(storyId)
       .then((saved) => {
-        setLifebookTitle(saved.title || "");
-        setLifebookVisibility(saved.visibility || "public");
         setBannerImage(saved.bannerImage || null);
-        setSavedSlug(saved.slug || "");
-
-        const mapped = toLocalChapters(saved.chapters);
-        setChapters(mapped);
-        setAdoptTried(true);
-
-        // ?story=<id> → open that story straight at its details step.
-        if (editStoryEntryId) {
-          for (const chapter of mapped) {
-            const entry = (chapter.stories || []).find(
-              (st) => String(st.id) === String(editStoryEntryId),
-            );
-            if (entry) {
-              setActiveOrder(chapter.order);
-              setDraft({ ...emptyStory(), ...entry });
-              setPhase(3);
-              break;
-            }
-          }
-        }
-
-        // ?publish=1 → reopen the draft they are publishing, at step 7.
-        if (wantsPublish && !editStoryEntryId) {
-          const pending = latestDraft(mapped);
-          if (pending) {
-            setActiveOrder(pending.chapter.order);
-            setDraft({ ...emptyStory(), ...pending.story });
-            setPhase(7);
-          }
-        }
+        setDraft({ ...emptyStory(), ...toStoryEntry(saved) });
+        // Resume at the final editable step when returning to publish.
+        setPhase(wantsPublish ? 5 : 1);
       })
-      .catch(() => setError("Story not found"))
+      .catch(() => toast.error("Story not found"))
       .finally(() => setLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storyId, author]);
 
-  // Fresh /stories/new: adopt the author's existing lifebook (if any) so new
-  // stories append to it instead of creating duplicate lifebooks.
-  useEffect(() => {
-    if (isEditMode || !author || adoptTried) return;
-    setAdoptTried(true);
-
-    findExistingLifebook()
-      .then((existing) => {
-        if (!existing) return;
-
-        const id = existing.id || existing._id;
-        setLifebookId(id);
-        setLifebookTitle(existing.title || "");
-        setLifebookVisibility(existing.visibility || "public");
-        setChapters(toLocalChapters(existing.chapters));
-        navigate(`/stories/${id}/edit`, { replace: true });
-      })
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [author, adoptTried, isEditMode]);
-
   /* ---------- Saving ---------- */
 
-  /**
-   * Normalizes a saved lifebook into local state and syncs ids (chapters and
-   * story entries) so the next save UPDATEs instead of duplicating rows.
-   */
-  function syncFromSaved(saved) {
-    if (!saved) return;
-
-    const mapped = toLocalChapters(saved.chapters);
-    setChapters(mapped);
-
-    // Re-point the draft at its saved entry (by id, or by content match for
-    // the very first save when no id existed yet).
-    setDraft((current) => {
-      if (current.id) return current;
-
-      const chapter = findChapter(mapped, activeOrder);
-      const match = (chapter?.stories || []).find(
-        (st) => st.title === current.title && st.content === current.content,
-      );
-      return match ? { ...current, id: match.id } : current;
-    });
-  }
-
-  /**
-   * Creates the lifebook (if needed) and persists every chapter including the
-   * in-progress story. Returns the saved lifebook.
-   */
-  async function ensureLifebookSaved({ publish = false } = {}) {
-    const storyEntry = {
+  /** Creates or updates the flat story document; returns the doc. */
+  async function ensureStorySaved({ publish = false } = {}) {
+    const payload = {
       ...toStoryEntry(draft),
+      ...(bannerImage ? { bannerImage } : {}),
       status: publish ? "published" : "draft",
     };
 
-    const nextChapters = sortChapters(chapters).map((chapter) => {
-      const isActive = Number(chapter.order) === Number(activeOrder);
-
-      // A story belongs to exactly one chapter, so it is dropped from every
-      // other chapter first — moving it between chapters therefore never
-      // leaves the same story behind twice.
-      const stories = (chapter.stories || [])
-        .map(toStoryEntry)
-        .filter((st) => !(draft.id && st._id === draft.id));
-
-      const order = Number(chapter.order) || 0;
-      return {
-        ...(chapter.id ? { _id: chapter.id } : {}),
-        order,
-        title: chapter.title?.trim() || suggestedTitle(order),
-        stories: isActive ? [...stories, storyEntry] : stories,
-      };
-    });
-
-    let saved;
-    if (lifebookId) {
-      saved = await storyApi.update(lifebookId, { chapters: nextChapters });
-    } else {
-      const body = {
-        chapters: nextChapters,
-        title: lifebookTitle?.trim() || draft.title?.trim() || "My Lifebook",
-        visibility: lifebookVisibility || "public",
-      };
-
-      saved = await storyApi.create(body);
-
-      const id = saved.id || saved._id;
-      setLifebookId(id);
-      // Preserve query params (publish=1 / story=<id>) across the URL swap
-      const query = searchParams.toString();
-      navigate(`/stories/${id}/edit${query ? `?${query}` : ""}`, {
-        replace: true,
-      });
+    if (storyDocId) {
+      const saved = await storyApi.update(storyDocId, payload);
+      return saved;
     }
 
-    // Critical: sync server-assigned ids back into local state so the next
-    // save updates rows instead of inserting duplicates.
-    syncFromSaved(saved);
+    const saved = await storyApi.create(payload);
+    const id = saved.id || saved._id;
+    setStoryDocId(id);
+    const query = searchParams.toString();
+    navigate(`/stories/${id}/edit${query ? `?${query}` : ""}`, { replace: true });
     return saved;
   }
 
-  /** Save a draft without publishing (used while writing, and on leaving). */
-  async function handleSaveDraft({ silent = true } = {}) {
+  /** Save a draft silently (autosave + on leaving steps). */
+  async function handleSaveDraft() {
     try {
-      await ensureLifebookSaved({ publish: false });
-      if (!silent) toast.success("Draft saved");
+      await ensureStorySaved({ publish: false });
     } catch {
-      // Silent — draft save is best-effort
+      // Silent — draft save is best-effort.
     }
   }
 
   async function handlePublish() {
-    // Publishing requires a completed profile (enforced server-side too).
-    // Save the story as a draft FIRST so nothing is lost, then send the
-    // author to complete their profile — they come straight back here.
-    if (!author?.isProfileCompleted) {
-      toast.error("Complete your profile to publish your story");
-      try {
-        await ensureLifebookSaved({ publish: false });
-      } catch {
-        // best-effort
-      }
-
-      const returnUrl = lifebookId
-        ? `/stories/${lifebookId}/edit?publish=1`
-        : `/stories/new?publish=1`;
-      navigate(
-        `/profile/edit?complete=1&redirect=${encodeURIComponent(returnUrl)}`,
-      );
+    if (bannerImage == null || !bannerImage.url) {
+      toast.error("Add a banner before publishing.");
+      setPhase(2);
       return;
     }
 
-    setError("");
+    // Not upgraded yet → show the publish-time upgrade modal. The draft
+    // is saved first so nothing is lost. The local `isAuthor` flag from
+    // the upgrade response makes the next Publish click skip the modal —
+    // no extra API call to figure out account state.
+    if (!activeAuthor?.isAuthor) {
+      try {
+        await ensureStorySaved({ publish: false });
+      } catch {
+        // best-effort — the modal still opens
+      }
+      setUpgradeOpen(true);
+      return;
+    }
+
+    await doPublish();
+  }
+
+  async function doPublish() {
+    setPublishing(true);
     try {
-      const saved = await ensureLifebookSaved({ publish: true });
-      await storyApi.publish(saved.id || saved._id, {
-        visibility: lifebookVisibility,
-      });
+      const saved = await ensureStorySaved({ publish: true });
+      await storyApi.publish(saved.id || saved._id);
 
       setSavedSlug(saved.slug || "");
-      setDraft((current) => ({ ...current, status: "published" }));
-      setPhase(9);
+      // Phase 6 is the congratulations screen — phase 5 is still the
+      // visibility step, so the success state must move beyond it.
+      setPhase(6);
+      toast.success("Your story is published!");
     } catch (err) {
       const message =
         err?.response?.data?.error?.message || "Failed to publish story";
-      setError(message);
       toast.error(message);
-      setPhase(7);
+    } finally {
+      setPublishing(false);
     }
   }
 
-  // Autosave: saves the draft a couple of seconds after typing stops, so a
-  // closed tab never loses work. Skipped before the author has written
-  // anything, and once published.
+  /** Upgrade succeeded → local state carries isAuthor; modal won't reopen. */
+  function handleUpgraded(upgradedAuthor) {
+    setUpgradeOpen(false);
+    setRefreshedAuthor(upgradedAuthor);
+    toast.success("Profile upgraded to author");
+  }
+
+  // Autosave: a couple of seconds after typing stops, so a closed tab never
+  // loses work. Skipped once published.
   const lastAutosaveRef = useRef("");
 
   useEffect(() => {
-    if (phase < 3) return;
+    if (phase > 4) return;
     if (!draft.title?.trim() && !draft.content?.trim()) return;
     if (draft.status === "published") return;
 
-    const signature = `${draft.id || ""}|${draft.title || ""}|${draft.content || ""}`;
+    const signature = `${draft.id || ""}|${draft.title || ""}|${draft.content || ""}|${draft.chapterName || ""}|${draft.storyType || ""}`;
     if (lastAutosaveRef.current === signature) return;
 
     const timer = setTimeout(() => {
       lastAutosaveRef.current = signature;
-      handleSaveDraft();
+      // Persist only once the mandatory fields exist — the backend rejects
+      // drafts without title+banner, so half-formed autosaves are skipped.
+      if (draft.title?.trim() && bannerImage?.url) {
+        handleSaveDraft();
+      }
     }, 2000);
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, draft.id, draft.title, draft.content, draft.status]);
-
-  /* ---------- Chapter selection ---------- */
-
-  const activeChapter = useMemo(
-    () => findChapter(chapters, activeOrder),
-    [chapters, activeOrder],
-  );
-
-  /**
-   * Chapter picked on the Select Chapter screen. A slot the lifebook has
-   * already reached is simply opened; an untouched one is created.
-   */
-  function handleChapterPick(order) {
-    if (!findChapter(chapters, order)) {
-      setChapters((prev) => [...prev, emptyChapter(order)]);
-    }
-    setActiveOrder(order);
-    setPhase(2);
-  }
-
-  /**
-   * Add a chapter after the ones the lifebook already holds, under a name the
-   * author chose (or the name of the slot it lands in).
-   */
-  function addAnotherChapter(title) {
-    const nextOrder = nextChapterOrder(chapters);
-    setChapters((prev) => [...prev, emptyChapter(nextOrder, title)]);
-    setActiveOrder(nextOrder);
-    setPhase(2);
-  }
+  }, [phase, draft.id, draft.title, draft.content, draft.chapterName, draft.storyType, bannerImage]);
 
   /* ---------- Render ---------- */
 
   if (authLoading || (isEditMode && !loaded)) {
     return <LoadingScreen message="Loading..." />;
   }
-  if (!author) {
+  if (!activeAuthor) {
     navigate("/login");
     return null;
-  }
-
-  /** Step 8 — the publishing spinner. */
-  if (phase === 8) {
-    return (
-      <WizardShell step={8} totalSteps={TOTAL_STEPS} title="Publish Story" onBack={null}>
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <Icons.spinner className="h-10 w-10 animate-spin text-primary" />
-          <p className="mt-5 font-display text-lg font-semibold text-foreground">
-            Publishing your story…
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            This only takes a moment.
-          </p>
-          {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
-        </div>
-      </WizardShell>
-    );
   }
 
   switch (phase) {
     case 1:
       return (
-        <SelectChapterStep
-          chapters={chapters}
-          onPick={handleChapterPick}
-          onAddChapter={addAnotherChapter}
+        <MetadataStep
+          story={draft}
+          onChange={setDraft}
+          onContinue={() => {
+            setPhase(2);
+          }}
           onBack={() => {
             handleSaveDraft();
             navigate("/profile");
@@ -364,97 +209,92 @@ export default function StoryEditorPage() {
 
     case 2:
       return (
-        <ChooseStoryTypeStep
-          storyType={draft.storyType}
-          onPick={(storyType) => setDraft((d) => ({ ...d, storyType }))}
-          onContinue={() => setPhase(3)}
+        <TitleStep
+          story={draft}
+          onChange={setDraft}
+          bannerImage={bannerImage}
+          onBannerChange={setBannerImage}
+          onContinue={() => {
+            setPhase(3);
+            handleSaveDraft();
+          }}
           onBack={() => setPhase(1)}
         />
       );
 
     case 3:
       return (
-        <StoryDetailsStep
+        <ContentStep
           story={draft}
           onChange={setDraft}
-          onContinue={() => setPhase(4)}
+          onContinue={() => {
+            setPhase(4);
+            handleSaveDraft();
+          }}
           onBack={() => setPhase(2)}
         />
       );
 
     case 4:
       return (
-        <WriteStoryStep
+        <MediaStep
           story={draft}
           onChange={setDraft}
-          onContinue={() => setPhase(5)}
+          onContinue={() => {
+            setPhase(5);
+            handleSaveDraft();
+          }}
           onBack={() => setPhase(3)}
         />
       );
 
     case 5:
       return (
-        <AddMediaStep
-          story={draft}
-          onChange={(updater) =>
-            // Supports both plain objects and functional updates (used by the
-            // media step's upload progress).
-            typeof updater === "function"
-              ? setDraft((current) => updater(current))
-              : setDraft(updater)
-          }
-          onContinue={() => setPhase(6)}
-          onBack={() => setPhase(4)}
-        />
+        <>
+          <VisibilityStep
+            visibility={draft.visibility}
+            onChange={(visibility) => setDraft((d) => ({ ...d, visibility }))}
+            hasBanner={Boolean(bannerImage?.url)}
+            publishing={publishing}
+            onPublish={handlePublish}
+            onBack={() => setPhase(4)}
+          />
+
+          {upgradeOpen && (
+            <UpgradeModal
+              author={activeAuthor}
+              onUpgraded={handleUpgraded}
+              onClose={() => setUpgradeOpen(false)}
+            />
+          )}
+        </>
       );
 
     case 6:
-      return (
-        <VisibilityStep
-          visibility={lifebookVisibility}
-          onChange={(visibility) => {
-            setLifebookVisibility(visibility);
-            setDraft((d) => ({ ...d, visibility }));
-          }}
-          onContinue={() => {
-            setPhase(7);
-            handleSaveDraft();
-          }}
-          onBack={() => setPhase(5)}
-        />
-      );
-
-    case 7:
-      return (
-        <PreviewStoryStep
-          story={draft}
-          chapter={activeChapter}
-          chapterOrder={activeOrder}
-          onPublish={() => {
-            setPhase(8);
-            handlePublish();
-          }}
-          onBack={() => setPhase(4)}
-        />
-      );
-
-    case 9:
       return (
         <PublishedStep
           storyUrl={savedSlug ? `/feed/story/${savedSlug}` : ""}
           onAddAnother={() => {
             setDraft(emptyStory());
+            setStoryDocId(null);
+            setBannerImage(null);
+            setSavedSlug("");
             setPhase(1);
           }}
-          onGoLifebook={() => navigate("/profile")}
-          onBack={() => navigate("/profile")}
+          onGoHome={() => navigate("/my-stories")}
         />
       );
 
     default:
       return (
         <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
-          <PrimaryButton onClick={() => setPhase(1)}>Start over</PrimaryButton>
+          <button
+            type="button"
+            onClick={() => setPhase(1)}
+            className="rounded-xl bg-primary px-5 py-3 font-display text-sm font-semibold text-primary-foreground"
+          >
+            Start over
+          </button>
         </div>
       );
   }
